@@ -1,0 +1,36 @@
+<UserControl x:Class="AstroManager.NinaPlugin.Controls.CurrentTargetAltitudeChart"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             Background="#1E1E1E" MinHeight="100">
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+        
+        <!-- Compact Legend -->
+        <StackPanel Grid.Row="0" Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,2,0,2">
+            <StackPanel Orientation="Horizontal" Margin="0,0,10,0">
+                <Rectangle Width="12" Height="3" Fill="#4EC9B0" VerticalAlignment="Center" Margin="0,0,3,0"/>
+                <TextBlock Text="Target" Foreground="#808080" FontSize="8"/>
+            </StackPanel>
+            <StackPanel Orientation="Horizontal" Margin="0,0,10,0">
+                <Rectangle Width="12" Height="3" Fill="#A0A0A0" VerticalAlignment="Center" Margin="0,0,3,0"/>
+                <TextBlock Text="Moon" Foreground="#808080" FontSize="8"/>
+            </StackPanel>
+            <StackPanel Orientation="Horizontal" Margin="0,0,10,0">
+                <Rectangle Width="12" Height="3" Fill="#FF4444" Opacity="0.5" VerticalAlignment="Center" Margin="0,0,3,0"/>
+                <TextBlock Text="Horizon" Foreground="#808080" FontSize="8"/>
+            </StackPanel>
+            <StackPanel Orientation="Horizontal">
+                <Rectangle Width="2" Height="10" Fill="#FFFF00" VerticalAlignment="Center" Margin="0,0,3,0"/>
+                <TextBlock Text="Now" Foreground="#808080" FontSize="8"/>
+            </StackPanel>
+        </StackPanel>
+        
+        <!-- Chart Canvas -->
+        <Border Grid.Row="1" BorderBrush="#3C3C3C" BorderThickness="1" Margin="2">
+            <Canvas x:Name="ChartCanvas" ClipToBounds="True" SizeChanged="ChartCanvas_SizeChanged"/>
+        </Border>
+    </Grid>
+</UserControl>

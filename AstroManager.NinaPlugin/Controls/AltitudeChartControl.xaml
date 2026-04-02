@@ -1,0 +1,43 @@
+<UserControl x:Class="AstroManager.NinaPlugin.Controls.AltitudeChartControl"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             Background="#1E1E1E" MinHeight="120">
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+        
+        <!-- Legend -->
+        <StackPanel Grid.Row="0" Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,4,0,4">
+            <StackPanel Orientation="Horizontal" Margin="0,0,12,0">
+                <!-- Rainbow gradient for altitude (low=red, mid=yellow, high=green) -->
+                <Rectangle Width="16" Height="4" VerticalAlignment="Center" Margin="0,0,4,0">
+                    <Rectangle.Fill>
+                        <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
+                            <GradientStop Color="#FF4444" Offset="0.0"/>
+                            <GradientStop Color="#FFA500" Offset="0.25"/>
+                            <GradientStop Color="#FFFF00" Offset="0.5"/>
+                            <GradientStop Color="#90EE90" Offset="0.75"/>
+                            <GradientStop Color="#4EC9B0" Offset="1.0"/>
+                        </LinearGradientBrush>
+                    </Rectangle.Fill>
+                </Rectangle>
+                <TextBlock Text="Altitude" Foreground="#909090" FontSize="9"/>
+            </StackPanel>
+            <StackPanel Orientation="Horizontal" Margin="0,0,12,0">
+                <Rectangle Width="12" Height="3" Fill="#A0A0A0" VerticalAlignment="Center" Margin="0,0,4,0"/>
+                <TextBlock Text="Moon" Foreground="#909090" FontSize="9"/>
+            </StackPanel>
+            <StackPanel Orientation="Horizontal">
+                <Rectangle Width="12" Height="8" Fill="#FF4444" Opacity="0.3" VerticalAlignment="Center" Margin="0,0,4,0"/>
+                <TextBlock Text="Horizon" Foreground="#909090" FontSize="9"/>
+            </StackPanel>
+        </StackPanel>
+        
+        <!-- Chart Canvas -->
+        <Border Grid.Row="1" BorderBrush="#3C3C3C" BorderThickness="1" Margin="4">
+            <Canvas x:Name="ChartCanvas" ClipToBounds="True" SizeChanged="ChartCanvas_SizeChanged"/>
+        </Border>
+    </Grid>
+</UserControl>

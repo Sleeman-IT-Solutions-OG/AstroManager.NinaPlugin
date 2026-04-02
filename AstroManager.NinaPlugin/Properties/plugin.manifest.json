@@ -1,0 +1,8 @@
+{
+  "Id": "AstroManager.NinaPlugin",
+  "Name": "AstroManager",
+  "Author": "Michael Sleeman",
+  "Version": "1.0.0",
+  "Description": "Integrates AstroManager with NINA Advanced Sequencer. Fetches targets and imaging goals dynamically.",
+  "MinimumVersion": "3.1.0.9001"
+}

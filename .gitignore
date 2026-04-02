@@ -1,0 +1,11 @@
+bin/
+obj/
+publish/
+.vs/
+.nuget/
+*.user
+*.suo
+*.pdb
+*.nupkg
+*.snupkg
+NuGet.local.config

@@ -1,0 +1,37 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <UseWPF>true</UseWPF>
+    <UseWindowsForms>true</UseWindowsForms>
+    <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
+    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+    <NuGetAudit>false</NuGetAudit>
+    <NoWarn>$(NoWarn);NU1701;NU1900</NoWarn>
+  </PropertyGroup>
+
+  <!-- Plugin Icon - must be named exactly "pluginicon.png" and embedded as resource -->
+  <ItemGroup Condition="Exists('pluginicon.png')">
+    <Resource Include="pluginicon.png" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- SignalR disabled due to dependency conflict with NINA's DI framework -->
+    <!-- <PackageReference Include="Microsoft.AspNetCore.SignalR.Client" Version="6.0.25" /> -->
+    <PackageReference Include="AstroManager.Contracts" Version="1.0.0" />
+    <PackageReference Include="AstroManager.PluginShared" Version="1.0.0" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="9.0.7" />
+    <PackageReference Include="NINA.Astrometry" Version="3.2.0.9001" />
+    <PackageReference Include="NINA.Core" Version="3.2.0.9001" />
+    <PackageReference Include="NINA.Equipment" Version="3.2.0.9001" />
+    <PackageReference Include="NINA.PlateSolving" Version="3.2.0.9001" />
+    <PackageReference Include="NINA.Plugin" Version="3.2.0.9001" />
+    <PackageReference Include="NINA.Profile" Version="3.2.0.9001" />
+    <PackageReference Include="NINA.Sequencer" Version="3.2.0.9001" />
+    <PackageReference Include="NINA.WPF.Base" Version="3.2.0.9001" />
+    <PackageReference Include="System.Data.SQLite.Core" Version="1.0.119" />
+  </ItemGroup>
+
+</Project>
