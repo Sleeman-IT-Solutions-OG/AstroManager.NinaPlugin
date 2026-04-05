@@ -12,7 +12,7 @@ using System.Runtime.InteropServices;
 [assembly: AssemblyTitle("AstroManager")]
 
 // [MANDATORY] A short description of your plugin
-[assembly: AssemblyDescription("Integrates AstroManager with NINA Advanced Sequencer. Fetches targets and imaging goals dynamically.")]
+[assembly: AssemblyDescription("Use AstroManager with NINA Advanced Sequencer. Documentation: https://docs.astro.sleeman.at")]
 
 // Your name
 [assembly: AssemblyCompany("Michael Sleeman")]
@@ -28,10 +28,13 @@ using System.Runtime.InteropServices;
 // The license your plugin code is using
 [assembly: AssemblyMetadata("License", "MIT")]
 [assembly: AssemblyMetadata("LicenseURL", "https://opensource.org/licenses/MIT")]
+[assembly: AssemblyMetadata("DocumentationURL", "https://docs.astro.sleeman.at")]
 
 // Optional attributes
 [assembly: AssemblyMetadata("Tags", "AstroManager,Scheduler,Targets,Imaging")]
-[assembly: AssemblyMetadata("LongDescription", @"AstroManager enables NINA to fetch scheduled targets, imaging goals, and session data from AstroManager's API. 
+[assembly: AssemblyMetadata("LongDescription", @"Documentation: https://docs.astro.sleeman.at
+
+AstroManager enables NINA to fetch scheduled targets, imaging goals, and session data from AstroManager's API. 
 
 It dynamically generates sequence instructions based on your imaging plan including:
 - Slew to target coordinates
