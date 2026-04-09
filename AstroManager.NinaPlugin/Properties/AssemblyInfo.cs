@@ -5,8 +5,8 @@ using System.Runtime.InteropServices;
 [assembly: Guid("B8E5A3F2-1C4D-4E6B-9F8A-2D3E4F5A6B7C")]
 
 // [MANDATORY] The assembly versioning
-[assembly: AssemblyVersion("1.0.0.1")]
-[assembly: AssemblyFileVersion("1.0.0.1")]
+[assembly: AssemblyVersion("1.0.0.2")]
+[assembly: AssemblyFileVersion("1.0.0.2")]
 
 // [MANDATORY] The name of your plugin
 [assembly: AssemblyTitle("AstroManager")]
