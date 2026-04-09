@@ -10,6 +10,7 @@ using System.Linq;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using System.Reflection;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -30,6 +31,13 @@ namespace AstroManager.NinaPlugin
         private readonly SlotApiService _slotService;
         private readonly TargetApiService _targetService;
         private readonly ConfigurationApiService _configurationService;
+
+        private const string ClientNameHeader = "X-AstroManager-Client";
+        private const string ClientVersionHeader = "X-AstroManager-Client-Version";
+        private const string ClientPlatformHeader = "X-AstroManager-Client-Platform";
+        private const string ApiVersionHeader = "X-AstroManager-Api-Version";
+        private const string CurrentApiVersion = "1";
+        private static readonly string PluginVersion = ResolvePluginVersion();
         
         // Shared JSON options with enum string converter for API deserialization
         private static readonly JsonSerializerOptions _jsonOptions = new JsonSerializerOptions
@@ -65,6 +73,7 @@ namespace AstroManager.NinaPlugin
             _settings = settings;
             _httpClient = new HttpClient();
             _httpClient.Timeout = TimeSpan.FromSeconds(30);
+            ConfigureClientMetadataHeaders();
             _offlineStore = new OfflineDataStore();
             
             // Initialize extracted services with dependency injection via lambdas
@@ -191,6 +200,28 @@ namespace AstroManager.NinaPlugin
         /// </summary>
         public AstroManagerSettings Settings => _settings;
 
+        private void ConfigureClientMetadataHeaders()
+        {
+            SetDefaultHeader(ClientNameHeader, "NINA Plugin");
+            SetDefaultHeader(ClientVersionHeader, PluginVersion);
+            SetDefaultHeader(ClientPlatformHeader, "NINA");
+            SetDefaultHeader(ApiVersionHeader, CurrentApiVersion);
+        }
+
+        private void SetDefaultHeader(string name, string value)
+        {
+            _httpClient.DefaultRequestHeaders.Remove(name);
+            _httpClient.DefaultRequestHeaders.TryAddWithoutValidation(name, value);
+        }
+
+        private static string ResolvePluginVersion()
+        {
+            var assembly = typeof(AstroManagerApiClient).Assembly;
+            return assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion
+                ?? assembly.GetName().Version?.ToString()
+                ?? "unknown";
+        }
+
         private void SetBearerToken()
         {
             _httpClient.DefaultRequestHeaders.Authorization = null;
@@ -219,7 +250,8 @@ namespace AstroManager.NinaPlugin
                 var payload = new
                 {
                     LicenseKey = _settings.LicenseKey,
-                    MachineId = GetMachineId()
+                    MachineId = GetMachineId(),
+                    ClientVersion = PluginVersion
                 };
 
                 var response = await _httpClient.PostAsJsonAsync(url, payload);
