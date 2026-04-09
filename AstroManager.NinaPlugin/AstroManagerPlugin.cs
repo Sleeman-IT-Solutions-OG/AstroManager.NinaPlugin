@@ -413,6 +413,7 @@ namespace AstroManager.NinaPlugin
             DeleteSchedulerConfigCommand = new RelayCommand(async p => await DeleteSchedulerConfigAsync(p as SchedulerConfigurationDto));
             CopySchedulerConfigCommand = new RelayCommand(async p => await CopySchedulerConfigAsync(p as SchedulerConfigurationDto));
             CloseSchedulerConfigEditCommand = new RelayCommand(_ => CancelSchedulerConfigEdit());
+            RefreshSchedulerScorePreviewCommand = new RelayCommand(_ => RefreshSchedulerScorePreview(), _ => HasSelectedSchedulerConfiguration);
             
             // Scheduler Preview (Generate from algorithm)
             GenerateSchedulerPreviewCommand = new RelayCommand(async _ => await GenerateSchedulerPreviewAsync(), _ => SelectedPreviewConfigId.HasValue && !IsLoadingPreview);
@@ -1386,42 +1387,8 @@ namespace AstroManager.NinaPlugin
             // Create backup when selecting for editing
             if (value != null)
             {
-                _selectedSchedulerConfigurationBackup = new SchedulerConfigurationDto
-                {
-                    Id = value.Id,
-                    Name = value.Name,
-                    PrimaryStrategy = value.PrimaryStrategy,
-                    SecondaryStrategy = value.SecondaryStrategy,
-                    TertiaryStrategy = value.TertiaryStrategy,
-                    MinAltitudeDegrees = value.MinAltitudeDegrees,
-                    FilterShootingPattern = value.FilterShootingPattern,
-                    FilterBatchSize = value.FilterBatchSize,
-                    GoalCompletionBehavior = value.GoalCompletionBehavior,
-                    LowerPriorityTo = value.LowerPriorityTo,
-                    ImagingEfficiencyPercent = value.ImagingEfficiencyPercent,
-                    MinSessionDurationMinutes = value.MinSessionDurationMinutes,
-                    MaxSequenceTimeMinutes = value.MaxSequenceTimeMinutes,
-                    MaxHoursPerTargetPerNight = value.MaxHoursPerTargetPerNight,
-                    MaxTotalHoursPerTarget = value.MaxTotalHoursPerTarget,
-                    UseMoonAvoidance = value.UseMoonAvoidance,
-                    AlwaysStopWhenNoTargetsForNight = value.AlwaysStopWhenNoTargetsForNight,
-                    EnableSafetyMonitorCheck = value.EnableSafetyMonitorCheck,
-                    EnableGuidingRmsCheck = value.EnableGuidingRmsCheck,
-                    MaxGuidingRmsArcSec = value.MaxGuidingRmsArcSec,
-                    EnableCloudCoverCheck = value.EnableCloudCoverCheck,
-                    MaxCloudCoverPercent = value.MaxCloudCoverPercent,
-                    EnableRainRateCheck = value.EnableRainRateCheck,
-                    MaxRainRate = value.MaxRainRate,
-                    EnableMountAltitudeCheck = value.EnableMountAltitudeCheck,
-                    MinMountAltitudeDegrees = value.MinMountAltitudeDegrees,
-                    EnableCoolerPowerCheck = value.EnableCoolerPowerCheck,
-                    MaxCoolerPowerPercent = value.MaxCoolerPowerPercent,
-                    ReduceCoolingOnHighCoolerPower = value.ReduceCoolingOnHighCoolerPower,
-                    CoolerWarmupDeltaDegrees = value.CoolerWarmupDeltaDegrees,
-                    ViolationAction = value.ViolationAction,
-                    ViolationRetryMinutes = value.ViolationRetryMinutes,
-                    IsDefault = value.IsDefault
-                };
+                EnsureSchedulerConfigurationWeightedCriteriaInitialized(value);
+                _selectedSchedulerConfigurationBackup = CloneSchedulerConfigurationDto(value);
             }
             else
             {
@@ -1433,9 +1400,49 @@ namespace AstroManager.NinaPlugin
             RaisePropertyChanged(nameof(ConfigGoalCompletionBehavior));
             RaisePropertyChanged(nameof(IsBatchPatternSelectedForConfig));
             RaisePropertyChanged(nameof(IsLowerPrioritySelectedForConfig));
+            RaisePropertyChanged(nameof(SelectedSchedulerPrioritizationMode));
+            RaisePropertyChanged(nameof(IsSimplePrioritizationSelectedForConfig));
+            RaisePropertyChanged(nameof(IsWeightedPrioritizationSelectedForConfig));
+            RaisePropertyChanged(nameof(SelectedSchedulerWeightedCriteria));
+            RefreshSchedulerScorePreview();
         }
         public bool HasSelectedSchedulerConfiguration => _selectedSchedulerConfiguration != null;
-        
+        public Shared.Model.Enums.PrioritizationMode SelectedSchedulerPrioritizationMode
+        {
+            get => _selectedSchedulerConfiguration?.PrioritizationMode ?? Shared.Model.Enums.PrioritizationMode.Simple;
+            set
+            {
+                if (_selectedSchedulerConfiguration == null)
+                {
+                    return;
+                }
+
+                var current = _selectedSchedulerConfiguration.PrioritizationMode ?? Shared.Model.Enums.PrioritizationMode.Simple;
+                if (current == value)
+                {
+                    return;
+                }
+
+                _selectedSchedulerConfiguration.PrioritizationMode = value;
+                if (value == Shared.Model.Enums.PrioritizationMode.Weighted)
+                {
+                    EnsureSchedulerConfigurationWeightedCriteriaInitialized(
+                        _selectedSchedulerConfiguration,
+                        seedFromSimpleStrategies: _selectedSchedulerConfiguration.WeightedCriteria == null || _selectedSchedulerConfiguration.WeightedCriteria.Count == 0);
+                }
+
+                RaisePropertyChanged();
+                RaisePropertyChanged(nameof(IsSimplePrioritizationSelectedForConfig));
+                RaisePropertyChanged(nameof(IsWeightedPrioritizationSelectedForConfig));
+                RaisePropertyChanged(nameof(SelectedSchedulerWeightedCriteria));
+                RefreshSchedulerScorePreview();
+            }
+        }
+        public bool IsSimplePrioritizationSelectedForConfig => SelectedSchedulerPrioritizationMode == Shared.Model.Enums.PrioritizationMode.Simple;
+        public bool IsWeightedPrioritizationSelectedForConfig => SelectedSchedulerPrioritizationMode == Shared.Model.Enums.PrioritizationMode.Weighted;
+        public IList<SchedulerWeightedCriterionDto> SelectedSchedulerWeightedCriteria =>
+            _selectedSchedulerConfiguration?.WeightedCriteria ?? new List<SchedulerWeightedCriterionDto>();
+
         // Visibility properties for conditional fields in Scheduler Config editor
         public bool IsLowerPrioritySelectedForConfig => 
             _selectedSchedulerConfiguration?.GoalCompletionBehavior == "LowerPriority";
@@ -1470,6 +1477,248 @@ namespace AstroManager.NinaPlugin
                     RaisePropertyChanged(nameof(IsLowerPrioritySelectedForConfig));
                 }
             }
+        }
+
+        private readonly SchedulerScorePreviewTarget _schedulerScorePreviewTargetA = new()
+        {
+            Name = "Target A"
+        };
+
+        private readonly SchedulerScorePreviewTarget _schedulerScorePreviewTargetB = new()
+        {
+            Name = "Target B",
+            Priority = 2,
+            Altitude = 52,
+            ObservableMinutes = 260,
+            RemainingTimeMinutes = 220,
+            MoonDistance = 80,
+            CompletionPercentage = 68
+        };
+
+        public SchedulerScorePreviewTarget SchedulerScorePreviewTargetA => _schedulerScorePreviewTargetA;
+        public SchedulerScorePreviewTarget SchedulerScorePreviewTargetB => _schedulerScorePreviewTargetB;
+        public string SchedulerScorePreviewTargetATotal => GetSchedulerScorePreviewSummary(_schedulerScorePreviewTargetA);
+        public string SchedulerScorePreviewTargetBTotal => GetSchedulerScorePreviewSummary(_schedulerScorePreviewTargetB);
+        public string SchedulerScorePreviewTargetABreakdown => GetSchedulerScorePreviewBreakdown(_schedulerScorePreviewTargetA);
+        public string SchedulerScorePreviewTargetBBreakdown => GetSchedulerScorePreviewBreakdown(_schedulerScorePreviewTargetB);
+
+        private void EnsureSchedulerConfigurationWeightedCriteriaInitialized(
+            SchedulerConfigurationDto config,
+            bool seedFromSimpleStrategies = false)
+        {
+            if (config.WeightedCriteria?.Any() == true)
+            {
+                return;
+            }
+
+            var criteria = Enum.GetValues<Shared.Model.Enums.SchedulerWeightedMetric>()
+                .Select(CreateDefaultWeightedCriterion)
+                .ToList();
+
+            if (seedFromSimpleStrategies)
+            {
+                ApplyStrategyWeight(criteria, config.PrimaryStrategy, 3);
+                if (config.SecondaryStrategy.HasValue)
+                {
+                    ApplyStrategyWeight(criteria, config.SecondaryStrategy.Value, 2);
+                }
+
+                if (config.TertiaryStrategy.HasValue)
+                {
+                    ApplyStrategyWeight(criteria, config.TertiaryStrategy.Value, 1);
+                }
+            }
+
+            if (!criteria.Any(c => c.Weight > 0))
+            {
+                criteria.First(c => c.Metric == Shared.Model.Enums.SchedulerWeightedMetric.Priority).Weight = 3;
+            }
+
+            config.WeightedCriteria = criteria;
+        }
+
+        private static SchedulerWeightedCriterionDto CreateDefaultWeightedCriterion(Shared.Model.Enums.SchedulerWeightedMetric metric)
+        {
+            var preferHigher = metric != Shared.Model.Enums.SchedulerWeightedMetric.Priority;
+            var (zero, full) = GetDefaultWeightedThresholds(metric, preferHigher);
+
+            return new SchedulerWeightedCriterionDto
+            {
+                Metric = metric,
+                Weight = 0,
+                PreferHigherValues = preferHigher,
+                ZeroScoreThreshold = zero,
+                FullScoreThreshold = full
+            };
+        }
+
+        private static void ApplyStrategyWeight(
+            IList<SchedulerWeightedCriterionDto> criteria,
+            Shared.Model.Enums.TargetSelectionStrategy strategy,
+            int weight)
+        {
+            var mapping = strategy switch
+            {
+                Shared.Model.Enums.TargetSelectionStrategy.PriorityFirst => (Shared.Model.Enums.SchedulerWeightedMetric.Priority, false),
+                Shared.Model.Enums.TargetSelectionStrategy.AltitudeFirst => (Shared.Model.Enums.SchedulerWeightedMetric.Altitude, true),
+                Shared.Model.Enums.TargetSelectionStrategy.TimeFirst => (Shared.Model.Enums.SchedulerWeightedMetric.RemainingTimeMinutes, false),
+                Shared.Model.Enums.TargetSelectionStrategy.HighestTimeFirst => (Shared.Model.Enums.SchedulerWeightedMetric.RemainingTimeMinutes, true),
+                Shared.Model.Enums.TargetSelectionStrategy.MoonAvoidanceFirst => (Shared.Model.Enums.SchedulerWeightedMetric.MoonDistance, true),
+                Shared.Model.Enums.TargetSelectionStrategy.HighestCompletionFirst => (Shared.Model.Enums.SchedulerWeightedMetric.CompletionPercentage, true),
+                _ => (Shared.Model.Enums.SchedulerWeightedMetric.Priority, false)
+            };
+
+            var criterion = criteria.First(c => c.Metric == mapping.Item1);
+            criterion.Weight = Math.Max(criterion.Weight, weight);
+            criterion.PreferHigherValues = mapping.Item2;
+        }
+
+        private static SchedulerConfigurationDto CloneSchedulerConfigurationDto(SchedulerConfigurationDto source)
+        {
+            var json = System.Text.Json.JsonSerializer.Serialize(source);
+            return System.Text.Json.JsonSerializer.Deserialize<SchedulerConfigurationDto>(json) ?? new SchedulerConfigurationDto();
+        }
+
+        private static bool WeightedCriteriaChanged(
+            IReadOnlyList<SchedulerWeightedCriterionDto>? left,
+            IReadOnlyList<SchedulerWeightedCriterionDto>? right)
+        {
+            var leftJson = System.Text.Json.JsonSerializer.Serialize(left ?? Array.Empty<SchedulerWeightedCriterionDto>());
+            var rightJson = System.Text.Json.JsonSerializer.Serialize(right ?? Array.Empty<SchedulerWeightedCriterionDto>());
+            return !string.Equals(leftJson, rightJson, StringComparison.Ordinal);
+        }
+
+        private void RefreshSchedulerScorePreview()
+        {
+            RaisePropertyChanged(nameof(SchedulerScorePreviewTargetATotal));
+            RaisePropertyChanged(nameof(SchedulerScorePreviewTargetBTotal));
+            RaisePropertyChanged(nameof(SchedulerScorePreviewTargetABreakdown));
+            RaisePropertyChanged(nameof(SchedulerScorePreviewTargetBBreakdown));
+        }
+
+        private string GetSchedulerScorePreviewSummary(SchedulerScorePreviewTarget target)
+        {
+            var result = CalculateSchedulerScorePreview(target);
+            return $"Score {result.TotalScore:F1}";
+        }
+
+        private string GetSchedulerScorePreviewBreakdown(SchedulerScorePreviewTarget target)
+        {
+            var result = CalculateSchedulerScorePreview(target);
+            if (!result.Contributions.Any())
+            {
+                return "Enable weighted metrics by setting their weight above 0.";
+            }
+
+            return string.Join(
+                " | ",
+                result.Contributions
+                    .OrderByDescending(c => c.WeightedScore)
+                    .Select(c => $"{c.Metric}: {c.WeightedScore:F1}"));
+        }
+
+        private SchedulerScorePreviewResult CalculateSchedulerScorePreview(SchedulerScorePreviewTarget target)
+        {
+            var result = new SchedulerScorePreviewResult();
+
+            foreach (var criterion in SelectedSchedulerWeightedCriteria.Where(c => c.Weight > 0))
+            {
+                var value = GetSchedulerScorePreviewMetricValue(target, criterion.Metric);
+                var (defaultZero, defaultFull) = GetDefaultWeightedThresholds(criterion.Metric, criterion.PreferHigherValues);
+                var zeroThreshold = criterion.ZeroScoreThreshold ?? defaultZero;
+                var fullThreshold = criterion.FullScoreThreshold ?? defaultFull;
+                var normalized = NormalizeWeightedPreviewValue(value, zeroThreshold, fullThreshold, criterion.PreferHigherValues);
+                var weighted = normalized * criterion.Weight;
+
+                result.Contributions.Add(new SchedulerScoreContributionDto
+                {
+                    Metric = criterion.Metric,
+                    Value = value,
+                    Weight = criterion.Weight,
+                    NormalizedScore = normalized,
+                    WeightedScore = weighted,
+                    PreferHigherValues = criterion.PreferHigherValues,
+                    ZeroScoreThreshold = criterion.ZeroScoreThreshold,
+                    FullScoreThreshold = criterion.FullScoreThreshold,
+                    DisplayValue = value.ToString("F1")
+                });
+
+                result.TotalScore += weighted;
+            }
+
+            return result;
+        }
+
+        private static double GetSchedulerScorePreviewMetricValue(
+            SchedulerScorePreviewTarget target,
+            Shared.Model.Enums.SchedulerWeightedMetric metric) => metric switch
+        {
+            Shared.Model.Enums.SchedulerWeightedMetric.Priority => target.Priority,
+            Shared.Model.Enums.SchedulerWeightedMetric.Altitude => target.Altitude,
+            Shared.Model.Enums.SchedulerWeightedMetric.ObservableMinutes => target.ObservableMinutes,
+            Shared.Model.Enums.SchedulerWeightedMetric.RemainingTimeMinutes => target.RemainingTimeMinutes,
+            Shared.Model.Enums.SchedulerWeightedMetric.MoonDistance => target.MoonDistance,
+            Shared.Model.Enums.SchedulerWeightedMetric.CompletionPercentage => target.CompletionPercentage,
+            _ => 0
+        };
+
+        private static (double Zero, double Full) GetDefaultWeightedThresholds(
+            Shared.Model.Enums.SchedulerWeightedMetric metric,
+            bool preferHigherValues)
+        {
+            var (naturalMin, naturalMax) = metric switch
+            {
+                Shared.Model.Enums.SchedulerWeightedMetric.Priority => (1d, 99d),
+                Shared.Model.Enums.SchedulerWeightedMetric.Altitude => (0d, 90d),
+                Shared.Model.Enums.SchedulerWeightedMetric.ObservableMinutes => (0d, 720d),
+                Shared.Model.Enums.SchedulerWeightedMetric.RemainingTimeMinutes => (0d, 720d),
+                Shared.Model.Enums.SchedulerWeightedMetric.MoonDistance => (0d, 180d),
+                Shared.Model.Enums.SchedulerWeightedMetric.CompletionPercentage => (0d, 100d),
+                _ => (0d, 100d)
+            };
+
+            return preferHigherValues ? (naturalMin, naturalMax) : (naturalMax, naturalMin);
+        }
+
+        private static double NormalizeWeightedPreviewValue(
+            double value,
+            double zeroThreshold,
+            double fullThreshold,
+            bool preferHigherValues)
+        {
+            if (Math.Abs(fullThreshold - zeroThreshold) < 0.000001)
+            {
+                return preferHigherValues
+                    ? (value >= fullThreshold ? 1 : 0)
+                    : (value <= fullThreshold ? 1 : 0);
+            }
+
+            if (preferHigherValues)
+            {
+                if (value <= zeroThreshold)
+                {
+                    return 0;
+                }
+
+                if (value >= fullThreshold)
+                {
+                    return 1;
+                }
+
+                return (value - zeroThreshold) / (fullThreshold - zeroThreshold);
+            }
+
+            if (value >= zeroThreshold)
+            {
+                return 0;
+            }
+
+            if (value <= fullThreshold)
+            {
+                return 1;
+            }
+
+            return (zeroThreshold - value) / (zeroThreshold - fullThreshold);
         }
         
         // Scheduler Preview DTO (from API)
@@ -2221,6 +2470,7 @@ namespace AstroManager.NinaPlugin
         public ICommand CopySchedulerConfigCommand { get; }
         public ICommand CloseSchedulerConfigEditCommand { get; }
         public ICommand SetDefaultSchedulerConfigCommand { get; }
+        public ICommand RefreshSchedulerScorePreviewCommand { get; }
         
         // Commands for Scheduler Preview (Generate from algorithm)
         public ICommand GenerateSchedulerPreviewCommand { get; }
@@ -3400,7 +3650,8 @@ namespace AstroManager.NinaPlugin
             new KeyValuePair<Shared.Model.Enums.TargetSelectionStrategy, string>(Shared.Model.Enums.TargetSelectionStrategy.AltitudeFirst, "Altitude First"),
             new KeyValuePair<Shared.Model.Enums.TargetSelectionStrategy, string>(Shared.Model.Enums.TargetSelectionStrategy.TimeFirst, "Time First"),
             new KeyValuePair<Shared.Model.Enums.TargetSelectionStrategy, string>(Shared.Model.Enums.TargetSelectionStrategy.HighestTimeFirst, "Highest Time First"),
-            new KeyValuePair<Shared.Model.Enums.TargetSelectionStrategy, string>(Shared.Model.Enums.TargetSelectionStrategy.MoonAvoidanceFirst, "Moon Avoidance First")
+            new KeyValuePair<Shared.Model.Enums.TargetSelectionStrategy, string>(Shared.Model.Enums.TargetSelectionStrategy.MoonAvoidanceFirst, "Moon Avoidance First"),
+            new KeyValuePair<Shared.Model.Enums.TargetSelectionStrategy, string>(Shared.Model.Enums.TargetSelectionStrategy.HighestCompletionFirst, "Highest Completion First")
         };
         
         public static KeyValuePair<Shared.Model.Enums.TargetSelectionStrategy?, string>[] TargetSelectionStrategyDisplayValuesWithNull => new[]
@@ -3410,7 +3661,14 @@ namespace AstroManager.NinaPlugin
             new KeyValuePair<Shared.Model.Enums.TargetSelectionStrategy?, string>(Shared.Model.Enums.TargetSelectionStrategy.AltitudeFirst, "Altitude First"),
             new KeyValuePair<Shared.Model.Enums.TargetSelectionStrategy?, string>(Shared.Model.Enums.TargetSelectionStrategy.TimeFirst, "Time First"),
             new KeyValuePair<Shared.Model.Enums.TargetSelectionStrategy?, string>(Shared.Model.Enums.TargetSelectionStrategy.HighestTimeFirst, "Highest Time First"),
-            new KeyValuePair<Shared.Model.Enums.TargetSelectionStrategy?, string>(Shared.Model.Enums.TargetSelectionStrategy.MoonAvoidanceFirst, "Moon Avoidance First")
+            new KeyValuePair<Shared.Model.Enums.TargetSelectionStrategy?, string>(Shared.Model.Enums.TargetSelectionStrategy.MoonAvoidanceFirst, "Moon Avoidance First"),
+            new KeyValuePair<Shared.Model.Enums.TargetSelectionStrategy?, string>(Shared.Model.Enums.TargetSelectionStrategy.HighestCompletionFirst, "Highest Completion First")
+        };
+
+        public static KeyValuePair<Shared.Model.Enums.PrioritizationMode, string>[] PrioritizationModeDisplayValues => new[]
+        {
+            new KeyValuePair<Shared.Model.Enums.PrioritizationMode, string>(Shared.Model.Enums.PrioritizationMode.Simple, "Simple"),
+            new KeyValuePair<Shared.Model.Enums.PrioritizationMode, string>(Shared.Model.Enums.PrioritizationMode.Weighted, "Weighted")
         };
 
         public static KeyValuePair<Shared.Model.Enums.SchedulerViolationAction, string>[] SchedulerViolationActionDisplayValues => new[]
@@ -3785,6 +4043,23 @@ namespace AstroManager.NinaPlugin
         }
 
         #endregion
+    }
+
+    public sealed class SchedulerScorePreviewTarget
+    {
+        public string Name { get; set; } = string.Empty;
+        public int Priority { get; set; } = 1;
+        public double Altitude { get; set; } = 65;
+        public double ObservableMinutes { get; set; } = 300;
+        public double RemainingTimeMinutes { get; set; } = 180;
+        public double MoonDistance { get; set; } = 110;
+        public double CompletionPercentage { get; set; } = 42;
+    }
+
+    public sealed class SchedulerScorePreviewResult
+    {
+        public double TotalScore { get; set; }
+        public List<SchedulerScoreContributionDto> Contributions { get; set; } = new();
     }
 
     /// <summary>

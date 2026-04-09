@@ -1,8 +1,8 @@
 {
   "Id": "AstroManager.NinaPlugin",
   "Name": "AstroManager",
-  "Author": "Michael Sleeman",
-  "Version": "1.0.0",
+  "Author": "Sleeman IT Solutions OG",
+  "Version": "1.0.1",
   "Description": "Use AstroManager with NINA Advanced Sequencer. Documentation: https://docs.astro.sleeman.at",
   "MinimumVersion": "3.2.0.9001"
 }

@@ -834,8 +834,33 @@
                                                                  ToolTip="Imaging efficiency 50-100% (e.g., 80 = 20% overhead for slews/focus)"/>
                                                     </StackPanel>
                                                 </Grid>
-                                                <!-- Row 2: Strategy Selection -->
+                                                <!-- Row 2: Prioritization Mode -->
                                                 <Grid Margin="0,0,0,6">
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="160"/>
+                                                        <ColumnDefinition Width="12"/>
+                                                        <ColumnDefinition Width="*"/>
+                                                    </Grid.ColumnDefinitions>
+                                                    <StackPanel Grid.Column="0">
+                                                        <TextBlock Text="Prioritization Mode" Style="{StaticResource FieldLabel}" ToolTip="Simple keeps the legacy primary/secondary/tertiary ordering. Weighted scores eligible targets across enabled metrics."/>
+                                                        <ComboBox ItemsSource="{Binding PrioritizationModeDisplayValues}"
+                                                                  SelectedValue="{Binding SelectedSchedulerPrioritizationMode, Mode=TwoWay}"
+                                                                  SelectedValuePath="Key" DisplayMemberPath="Value"
+                                                                  Background="#3C3C3C" Foreground="#E0E0E0" FontSize="12" Padding="4,3" MinHeight="26"/>
+                                                    </StackPanel>
+                                                    <Border Grid.Column="2" Background="#252526" CornerRadius="3" Padding="10,6">
+                                                        <TextBlock Foreground="#A0A0A0" FontSize="10" TextWrapping="Wrap">
+                                                            <Run Text="Simple:" FontWeight="SemiBold" Foreground="#C0C0C0"/>
+                                                            <Run Text=" use Primary / Secondary / Tertiary tiebreakers. "/>
+                                                            <Run Text="Weighted:" FontWeight="SemiBold" Foreground="#C0C0C0"/>
+                                                            <Run Text=" set a weight per metric. Weight 0 disables that metric and thresholds scale linearly."/>
+                                                        </TextBlock>
+                                                    </Border>
+                                                </Grid>
+
+                                                <!-- Row 3: Strategy Selection -->
+                                                <Grid Margin="0,0,0,6"
+                                                      Visibility="{Binding IsSimplePrioritizationSelectedForConfig, Converter={StaticResource BoolToVisConverter}}">
                                                     <Grid.ColumnDefinitions>
                                                         <ColumnDefinition Width="*"/>
                                                         <ColumnDefinition Width="8"/>
@@ -844,20 +869,18 @@
                                                         <ColumnDefinition Width="*"/>
                                                     </Grid.ColumnDefinitions>
                                                     <StackPanel Grid.Column="0">
-                                                        <TextBlock Text="Primary Strategy" Style="{StaticResource FieldLabel}" ToolTip="How targets are ranked and selected. Priority=by priority number, Altitude=highest first, Completion=least complete first"/>
+                                                        <TextBlock Text="Primary Strategy" Style="{StaticResource FieldLabel}" ToolTip="How targets are ranked and selected. Priority=by priority number, Altitude=highest first, Completion=highest complete first"/>
                                                         <ComboBox ItemsSource="{Binding TargetSelectionStrategyDisplayValues}" 
                                                                   SelectedValue="{Binding SelectedSchedulerConfiguration.PrimaryStrategy, Mode=TwoWay}"
                                                                   SelectedValuePath="Key" DisplayMemberPath="Value"
-                                                                  Background="#3C3C3C" Foreground="#E0E0E0" FontSize="12" Padding="4,3" MinHeight="26"
-                                                                  ToolTip="Priority=by priority | Altitude=highest altitude first | Completion=least complete first | MeridianWindow=near meridian"/>
+                                                                  Background="#3C3C3C" Foreground="#E0E0E0" FontSize="12" Padding="4,3" MinHeight="26"/>
                                                     </StackPanel>
                                                     <StackPanel Grid.Column="2">
                                                         <TextBlock Text="Secondary Strategy" Style="{StaticResource FieldLabel}" ToolTip="Used when multiple targets tie on primary strategy"/>
                                                         <ComboBox ItemsSource="{Binding TargetSelectionStrategyDisplayValuesWithNull}" 
                                                                   SelectedValue="{Binding SelectedSchedulerConfiguration.SecondaryStrategy, Mode=TwoWay}"
                                                                   SelectedValuePath="Key" DisplayMemberPath="Value"
-                                                                  Background="#3C3C3C" Foreground="#E0E0E0" FontSize="12" Padding="4,3" MinHeight="26"
-                                                                  ToolTip="Tiebreaker when primary strategy results in equal scores"/>
+                                                                  Background="#3C3C3C" Foreground="#E0E0E0" FontSize="12" Padding="4,3" MinHeight="26"/>
                                                     </StackPanel>
                                                     <StackPanel Grid.Column="4">
                                                         <TextBlock Text="Tertiary Strategy" Style="{StaticResource FieldLabel}" ToolTip="Third-level tiebreaker if primary and secondary are equal"/>
@@ -867,6 +890,166 @@
                                                                   Background="#3C3C3C" Foreground="#E0E0E0" FontSize="12" Padding="4,3" MinHeight="26"/>
                                                     </StackPanel>
                                                 </Grid>
+
+                                                <Border Background="#1F2730" CornerRadius="4" Padding="8" Margin="0,0,0,6"
+                                                        Visibility="{Binding IsWeightedPrioritizationSelectedForConfig, Converter={StaticResource BoolToVisConverter}}">
+                                                    <StackPanel>
+                                                        <TextBlock Text="Weighted Prioritization" Foreground="#9CDCFE" FontSize="11" FontWeight="SemiBold"/>
+                                                        <TextBlock Text="All metrics stay visible here. Set weight to 0 to disable one. Thresholds define where a metric reaches zero score and full score." Foreground="#A0A0A0" FontSize="10" TextWrapping="Wrap" Margin="0,4,0,6"/>
+                                                        <Border Background="#161616" CornerRadius="3" Padding="6,5" Margin="0,0,0,4">
+                                                            <Grid>
+                                                                <Grid.ColumnDefinitions>
+                                                                    <ColumnDefinition Width="2*"/>
+                                                                    <ColumnDefinition Width="50"/>
+                                                                    <ColumnDefinition Width="95"/>
+                                                                    <ColumnDefinition Width="70"/>
+                                                                    <ColumnDefinition Width="70"/>
+                                                                </Grid.ColumnDefinitions>
+                                                                <TextBlock Grid.Column="0" Text="Metric" Foreground="#B0B0B0" FontSize="10" FontWeight="SemiBold"/>
+                                                                <TextBlock Grid.Column="1" Text="Weight" Foreground="#B0B0B0" FontSize="10" FontWeight="SemiBold"/>
+                                                                <TextBlock Grid.Column="2" Text="Prefer Higher" Foreground="#B0B0B0" FontSize="10" FontWeight="SemiBold"/>
+                                                                <TextBlock Grid.Column="3" Text="Zero" Foreground="#B0B0B0" FontSize="10" FontWeight="SemiBold"/>
+                                                                <TextBlock Grid.Column="4" Text="Full" Foreground="#B0B0B0" FontSize="10" FontWeight="SemiBold"/>
+                                                            </Grid>
+                                                        </Border>
+                                                        <ItemsControl ItemsSource="{Binding SelectedSchedulerWeightedCriteria}">
+                                                            <ItemsControl.ItemTemplate>
+                                                                <DataTemplate>
+                                                                    <Border Background="#2D2D30" BorderBrush="#404040" BorderThickness="0,0,0,1" Padding="6,4">
+                                                                        <Grid>
+                                                                            <Grid.ColumnDefinitions>
+                                                                                <ColumnDefinition Width="2*"/>
+                                                                                <ColumnDefinition Width="50"/>
+                                                                                <ColumnDefinition Width="95"/>
+                                                                                <ColumnDefinition Width="70"/>
+                                                                                <ColumnDefinition Width="70"/>
+                                                                            </Grid.ColumnDefinitions>
+                                                                            <TextBlock Grid.Column="0" Text="{Binding Metric}" Foreground="#E0E0E0" VerticalAlignment="Center" FontSize="11" FontWeight="SemiBold"/>
+                                                                            <TextBox Grid.Column="1" Style="{StaticResource InputBox}" Margin="4,0,0,0" Text="{Binding Weight, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/>
+                                                                            <CheckBox Grid.Column="2" IsChecked="{Binding PreferHigherValues, Mode=TwoWay}" VerticalAlignment="Center" HorizontalAlignment="Center"/>
+                                                                            <TextBox Grid.Column="3" Style="{StaticResource InputBox}" Margin="4,0,0,0" Text="{Binding ZeroScoreThreshold, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/>
+                                                                            <TextBox Grid.Column="4" Style="{StaticResource InputBox}" Margin="4,0,0,0" Text="{Binding FullScoreThreshold, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/>
+                                                                        </Grid>
+                                                                    </Border>
+                                                                </DataTemplate>
+                                                            </ItemsControl.ItemTemplate>
+                                                        </ItemsControl>
+
+                                                        <Border Background="#16202A" CornerRadius="4" Padding="8" Margin="0,8,0,0">
+                                                            <StackPanel>
+                                                                <Grid Margin="0,0,0,6">
+                                                                    <Grid.ColumnDefinitions>
+                                                                        <ColumnDefinition Width="*"/>
+                                                                        <ColumnDefinition Width="Auto"/>
+                                                                    </Grid.ColumnDefinitions>
+                                                                    <TextBlock Text="Score Preview" Foreground="#9CDCFE" FontSize="11" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                                                                    <Button Grid.Column="1" Content="Recalculate Scores" Command="{Binding RefreshSchedulerScorePreviewCommand}" Style="{StaticResource SecondaryButton}" Padding="10,4" FontSize="10"/>
+                                                                </Grid>
+                                                                <Grid>
+                                                                    <Grid.ColumnDefinitions>
+                                                                        <ColumnDefinition Width="*"/>
+                                                                        <ColumnDefinition Width="8"/>
+                                                                        <ColumnDefinition Width="*"/>
+                                                                    </Grid.ColumnDefinitions>
+
+                                                                    <Border Grid.Column="0" Background="#1E1E1E" CornerRadius="3" Padding="8">
+                                                                        <StackPanel>
+                                                                            <TextBlock Text="{Binding SchedulerScorePreviewTargetA.Name}" Foreground="#E0E0E0" FontSize="11" FontWeight="SemiBold"/>
+                                                                            <Grid Margin="0,6,0,0">
+                                                                                <Grid.ColumnDefinitions>
+                                                                                    <ColumnDefinition Width="Auto"/>
+                                                                                    <ColumnDefinition Width="60"/>
+                                                                                    <ColumnDefinition Width="8"/>
+                                                                                    <ColumnDefinition Width="Auto"/>
+                                                                                    <ColumnDefinition Width="60"/>
+                                                                                </Grid.ColumnDefinitions>
+                                                                                <TextBlock Grid.Column="0" Text="Priority" Style="{StaticResource FieldLabel}"/>
+                                                                                <TextBox Grid.Column="1" Style="{StaticResource InputBox}" Text="{Binding SchedulerScorePreviewTargetA.Priority, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/>
+                                                                                <TextBlock Grid.Column="3" Text="Altitude" Style="{StaticResource FieldLabel}"/>
+                                                                                <TextBox Grid.Column="4" Style="{StaticResource InputBox}" Text="{Binding SchedulerScorePreviewTargetA.Altitude, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/>
+                                                                            </Grid>
+                                                                            <Grid Margin="0,4,0,0">
+                                                                                <Grid.ColumnDefinitions>
+                                                                                    <ColumnDefinition Width="Auto"/>
+                                                                                    <ColumnDefinition Width="60"/>
+                                                                                    <ColumnDefinition Width="8"/>
+                                                                                    <ColumnDefinition Width="Auto"/>
+                                                                                    <ColumnDefinition Width="60"/>
+                                                                                </Grid.ColumnDefinitions>
+                                                                                <TextBlock Grid.Column="0" Text="Obs. Min" Style="{StaticResource FieldLabel}"/>
+                                                                                <TextBox Grid.Column="1" Style="{StaticResource InputBox}" Text="{Binding SchedulerScorePreviewTargetA.ObservableMinutes, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/>
+                                                                                <TextBlock Grid.Column="3" Text="Remain" Style="{StaticResource FieldLabel}"/>
+                                                                                <TextBox Grid.Column="4" Style="{StaticResource InputBox}" Text="{Binding SchedulerScorePreviewTargetA.RemainingTimeMinutes, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/>
+                                                                            </Grid>
+                                                                            <Grid Margin="0,4,0,0">
+                                                                                <Grid.ColumnDefinitions>
+                                                                                    <ColumnDefinition Width="Auto"/>
+                                                                                    <ColumnDefinition Width="60"/>
+                                                                                    <ColumnDefinition Width="8"/>
+                                                                                    <ColumnDefinition Width="Auto"/>
+                                                                                    <ColumnDefinition Width="60"/>
+                                                                                </Grid.ColumnDefinitions>
+                                                                                <TextBlock Grid.Column="0" Text="Moon °" Style="{StaticResource FieldLabel}"/>
+                                                                                <TextBox Grid.Column="1" Style="{StaticResource InputBox}" Text="{Binding SchedulerScorePreviewTargetA.MoonDistance, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/>
+                                                                                <TextBlock Grid.Column="3" Text="Comp %" Style="{StaticResource FieldLabel}"/>
+                                                                                <TextBox Grid.Column="4" Style="{StaticResource InputBox}" Text="{Binding SchedulerScorePreviewTargetA.CompletionPercentage, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/>
+                                                                            </Grid>
+                                                                            <TextBlock Text="{Binding SchedulerScorePreviewTargetATotal}" Foreground="#4EC9B0" FontSize="11" FontWeight="SemiBold" Margin="0,8,0,0"/>
+                                                                            <TextBlock Text="{Binding SchedulerScorePreviewTargetABreakdown}" Foreground="#A0A0A0" FontSize="10" TextWrapping="Wrap" Margin="0,2,0,0"/>
+                                                                        </StackPanel>
+                                                                    </Border>
+
+                                                                    <Border Grid.Column="2" Background="#1E1E1E" CornerRadius="3" Padding="8">
+                                                                        <StackPanel>
+                                                                            <TextBlock Text="{Binding SchedulerScorePreviewTargetB.Name}" Foreground="#E0E0E0" FontSize="11" FontWeight="SemiBold"/>
+                                                                            <Grid Margin="0,6,0,0">
+                                                                                <Grid.ColumnDefinitions>
+                                                                                    <ColumnDefinition Width="Auto"/>
+                                                                                    <ColumnDefinition Width="60"/>
+                                                                                    <ColumnDefinition Width="8"/>
+                                                                                    <ColumnDefinition Width="Auto"/>
+                                                                                    <ColumnDefinition Width="60"/>
+                                                                                </Grid.ColumnDefinitions>
+                                                                                <TextBlock Grid.Column="0" Text="Priority" Style="{StaticResource FieldLabel}"/>
+                                                                                <TextBox Grid.Column="1" Style="{StaticResource InputBox}" Text="{Binding SchedulerScorePreviewTargetB.Priority, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/>
+                                                                                <TextBlock Grid.Column="3" Text="Altitude" Style="{StaticResource FieldLabel}"/>
+                                                                                <TextBox Grid.Column="4" Style="{StaticResource InputBox}" Text="{Binding SchedulerScorePreviewTargetB.Altitude, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/>
+                                                                            </Grid>
+                                                                            <Grid Margin="0,4,0,0">
+                                                                                <Grid.ColumnDefinitions>
+                                                                                    <ColumnDefinition Width="Auto"/>
+                                                                                    <ColumnDefinition Width="60"/>
+                                                                                    <ColumnDefinition Width="8"/>
+                                                                                    <ColumnDefinition Width="Auto"/>
+                                                                                    <ColumnDefinition Width="60"/>
+                                                                                </Grid.ColumnDefinitions>
+                                                                                <TextBlock Grid.Column="0" Text="Obs. Min" Style="{StaticResource FieldLabel}"/>
+                                                                                <TextBox Grid.Column="1" Style="{StaticResource InputBox}" Text="{Binding SchedulerScorePreviewTargetB.ObservableMinutes, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/>
+                                                                                <TextBlock Grid.Column="3" Text="Remain" Style="{StaticResource FieldLabel}"/>
+                                                                                <TextBox Grid.Column="4" Style="{StaticResource InputBox}" Text="{Binding SchedulerScorePreviewTargetB.RemainingTimeMinutes, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/>
+                                                                            </Grid>
+                                                                            <Grid Margin="0,4,0,0">
+                                                                                <Grid.ColumnDefinitions>
+                                                                                    <ColumnDefinition Width="Auto"/>
+                                                                                    <ColumnDefinition Width="60"/>
+                                                                                    <ColumnDefinition Width="8"/>
+                                                                                    <ColumnDefinition Width="Auto"/>
+                                                                                    <ColumnDefinition Width="60"/>
+                                                                                </Grid.ColumnDefinitions>
+                                                                                <TextBlock Grid.Column="0" Text="Moon °" Style="{StaticResource FieldLabel}"/>
+                                                                                <TextBox Grid.Column="1" Style="{StaticResource InputBox}" Text="{Binding SchedulerScorePreviewTargetB.MoonDistance, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/>
+                                                                                <TextBlock Grid.Column="3" Text="Comp %" Style="{StaticResource FieldLabel}"/>
+                                                                                <TextBox Grid.Column="4" Style="{StaticResource InputBox}" Text="{Binding SchedulerScorePreviewTargetB.CompletionPercentage, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/>
+                                                                            </Grid>
+                                                                            <TextBlock Text="{Binding SchedulerScorePreviewTargetBTotal}" Foreground="#4EC9B0" FontSize="11" FontWeight="SemiBold" Margin="0,8,0,0"/>
+                                                                            <TextBlock Text="{Binding SchedulerScorePreviewTargetBBreakdown}" Foreground="#A0A0A0" FontSize="10" TextWrapping="Wrap" Margin="0,2,0,0"/>
+                                                                        </StackPanel>
+                                                                    </Border>
+                                                                </Grid>
+                                                            </StackPanel>
+                                                        </Border>
+                                                    </StackPanel>
+                                                </Border>
                                                 <!-- Row 3: Filter Pattern, Batch Size, Goal Completion -->
                                                 <Grid Margin="0,0,0,6">
                                                     <Grid.ColumnDefinitions>
@@ -2692,38 +2875,46 @@
                                                                               Command="{Binding DataContext.SelectPreviewTargetCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
                                                                               CommandParameter="{Binding}"/>
                                                             </Border.InputBindings>
-                                                            <Grid>
-                                                                <Grid.ColumnDefinitions>
-                                                                    <ColumnDefinition Width="Auto"/>
-                                                                    <ColumnDefinition Width="Auto"/>
-                                                                    <ColumnDefinition Width="*"/>
-                                                                    <ColumnDefinition Width="Auto"/>
-                                                                    <ColumnDefinition Width="40"/>
-                                                                </Grid.ColumnDefinitions>
-                                                                <!-- Time range (local time) -->
-                                                                <TextBlock Grid.Column="0" VerticalAlignment="Center" FontSize="11" Foreground="#A0A0A0" Margin="0,0,8,0">
-                                                                    <Run Text="{Binding StartTimeLocal, StringFormat=HH:mm, Mode=OneWay}"/>
-                                                                    <Run Text="-"/>
-                                                                    <Run Text="{Binding EndTimeLocal, StringFormat=HH:mm, Mode=OneWay}"/>
+                                                            <StackPanel>
+                                                                <Grid>
+                                                                    <Grid.ColumnDefinitions>
+                                                                        <ColumnDefinition Width="Auto"/>
+                                                                        <ColumnDefinition Width="Auto"/>
+                                                                        <ColumnDefinition Width="*"/>
+                                                                        <ColumnDefinition Width="Auto"/>
+                                                                        <ColumnDefinition Width="50"/>
+                                                                    </Grid.ColumnDefinitions>
+                                                                    <!-- Time range (local time) -->
+                                                                    <TextBlock Grid.Column="0" VerticalAlignment="Center" FontSize="11" Foreground="#A0A0A0" Margin="0,0,8,0">
+                                                                        <Run Text="{Binding StartTimeLocal, StringFormat=HH:mm, Mode=OneWay}"/>
+                                                                        <Run Text="-"/>
+                                                                        <Run Text="{Binding EndTimeLocal, StringFormat=HH:mm, Mode=OneWay}"/>
+                                                                    </TextBlock>
+                                                                    <!-- Target + Panel -->
+                                                                    <TextBlock Grid.Column="1" VerticalAlignment="Center" FontSize="12" Foreground="#E0E0E0" Margin="0,0,8,0">
+                                                                        <Run Text="{Binding TargetName}" FontWeight="SemiBold"/>
+                                                                        <Run Text="{Binding PanelNumber, StringFormat=' P{0}', TargetNullValue=''}" Foreground="#CE91CE"/>
+                                                                    </TextBlock>
+                                                                    <!-- Compact filter summary - summed totals per filter (middle) -->
+                                                                    <TextBlock Grid.Column="2" Text="{Binding FilterSummary, Mode=OneWay}" 
+                                                                               VerticalAlignment="Center" FontSize="10" Foreground="#569CD6" 
+                                                                               FontFamily="Consolas" Margin="0,0,8,0"/>
+                                                                    <!-- Moon distance -->
+                                                                    <TextBlock Grid.Column="3" VerticalAlignment="Center" FontSize="11" Foreground="#A0A0A0" Margin="0,0,8,0">
+                                                                        <Run Text="🌙"/>
+                                                                        <Run Text="{Binding MoonDistance, StringFormat='{}{0:F0}°'}"/>
+                                                                    </TextBlock>
+                                                                    <!-- Duration -->
+                                                                    <TextBlock Grid.Column="4" Text="{Binding PlannedImagingMinutes, StringFormat='{}{0:F0}m'}" 
+                                                                               FontSize="12" Foreground="#4EC9B0" VerticalAlignment="Center" HorizontalAlignment="Right"/>
+                                                                </Grid>
+                                                                <TextBlock FontSize="10" Foreground="#8FD3A8" Margin="0,4,0,0">
+                                                                    <Run Text="Score "/>
+                                                                    <Run Text="{Binding PriorityScore, StringFormat={}{0:F1}, TargetNullValue=-}"/>
+                                                                    <Run Text="  "/>
+                                                                    <Run Text="{Binding SelectionReason, Mode=OneWay}"/>
                                                                 </TextBlock>
-                                                                <!-- Target + Panel -->
-                                                                <TextBlock Grid.Column="1" VerticalAlignment="Center" FontSize="12" Foreground="#E0E0E0" Margin="0,0,8,0">
-                                                                    <Run Text="{Binding TargetName}" FontWeight="SemiBold"/>
-                                                                    <Run Text="{Binding PanelNumber, StringFormat=' P{0}', TargetNullValue=''}" Foreground="#CE91CE"/>
-                                                                </TextBlock>
-                                                                <!-- Compact filter summary - summed totals per filter (middle) -->
-                                                                <TextBlock Grid.Column="2" Text="{Binding FilterSummary, Mode=OneWay}" 
-                                                                           VerticalAlignment="Center" FontSize="10" Foreground="#569CD6" 
-                                                                           FontFamily="Consolas" Margin="0,0,8,0"/>
-                                                                <!-- Moon distance -->
-                                                                <TextBlock Grid.Column="3" VerticalAlignment="Center" FontSize="11" Foreground="#A0A0A0" Margin="0,0,8,0">
-                                                                    <Run Text="🌙"/>
-                                                                    <Run Text="{Binding MoonDistance, StringFormat='{}{0:F0}°'}"/>
-                                                                </TextBlock>
-                                                                <!-- Duration -->
-                                                                <TextBlock Grid.Column="4" Text="{Binding PlannedImagingMinutes, StringFormat='{}{0:F0}m'}" 
-                                                                           FontSize="12" Foreground="#4EC9B0" VerticalAlignment="Center" HorizontalAlignment="Right"/>
-                                                            </Grid>
+                                                            </StackPanel>
                                                         </Border>
                                                     </StackPanel>
                                                 </DataTemplate>
@@ -2744,13 +2935,23 @@
                                                     <ItemsControl ItemsSource="{Binding SchedulerPreviewUnscheduledSlots}">
                                                         <ItemsControl.ItemTemplate>
                                                             <DataTemplate>
-                                                                <TextBlock FontSize="9" Foreground="#C08080" TextWrapping="Wrap" Margin="0,1">
-                                                                    <Run Text="{Binding StartTimeLocal, StringFormat=HH:mm, Mode=OneWay}"/>
-                                                                    <Run Text="-"/>
-                                                                    <Run Text="{Binding EndTimeLocal, StringFormat=HH:mm, Mode=OneWay}"/>
-                                                                    <Run Text=": "/>
-                                                                    <Run Text="{Binding Reason, Mode=OneWay}"/>
-                                                                </TextBlock>
+                                                                <StackPanel Margin="0,1">
+                                                                    <TextBlock FontSize="9" Foreground="#C08080" TextWrapping="Wrap">
+                                                                        <Run Text="{Binding StartTimeLocal, StringFormat=HH:mm, Mode=OneWay}"/>
+                                                                        <Run Text="-"/>
+                                                                        <Run Text="{Binding EndTimeLocal, StringFormat=HH:mm, Mode=OneWay}"/>
+                                                                        <Run Text=": "/>
+                                                                        <Run Text="{Binding Reason, Mode=OneWay}"/>
+                                                                    </TextBlock>
+                                                                    <TextBlock FontSize="9" Foreground="#C8A0A0" TextWrapping="Wrap"
+                                                                               Visibility="{Binding BestCandidateTargetName, Converter={StaticResource NullOrEmptyToVisConverter}}">
+                                                                        <Run Text="Best candidate: "/>
+                                                                        <Run Text="{Binding BestCandidateTargetName}"/>
+                                                                        <Run Text=" (score "/>
+                                                                        <Run Text="{Binding BestCandidateTargetScore, StringFormat={}{0:F1}, TargetNullValue=-}"/>
+                                                                        <Run Text=")"/>
+                                                                    </TextBlock>
+                                                                </StackPanel>
                                                             </DataTemplate>
                                                         </ItemsControl.ItemTemplate>
                                                     </ItemsControl>
@@ -2857,6 +3058,7 @@
                                                                 <Grid.RowDefinitions>
                                                                     <RowDefinition Height="Auto"/>
                                                                     <RowDefinition Height="Auto"/>
+                                                                    <RowDefinition Height="Auto"/>
                                                                 </Grid.RowDefinitions>
                                                                 <Grid.ColumnDefinitions>
                                                                     <ColumnDefinition Width="*"/>
@@ -2866,7 +3068,17 @@
                                                                            Foreground="#E0E0E0" FontSize="11" FontWeight="SemiBold"/>
                                                                 <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding Reason}" 
                                                                            Foreground="#FFB800" FontSize="10" HorizontalAlignment="Right"/>
-                                                                <TextBlock Grid.Row="1" Grid.ColumnSpan="2" Text="{Binding DetailedExplanation}" 
+                                                                <TextBlock Grid.Row="1" Grid.ColumnSpan="2" Foreground="#D0C080" FontSize="10" Margin="0,4,0,0"
+                                                                           Visibility="{Binding WinningTargetName, Converter={StaticResource NullOrEmptyToVisConverter}}">
+                                                                    <Run Text="Score "/>
+                                                                    <Run Text="{Binding PriorityScore, StringFormat={}{0:F1}, TargetNullValue=-}"/>
+                                                                    <Run Text="  Lost to "/>
+                                                                    <Run Text="{Binding WinningTargetName}"/>
+                                                                    <Run Text=" ("/>
+                                                                    <Run Text="{Binding WinningTargetScore, StringFormat={}{0:F1}, TargetNullValue=-}"/>
+                                                                    <Run Text=")"/>
+                                                                </TextBlock>
+                                                                <TextBlock Grid.Row="2" Grid.ColumnSpan="2" Text="{Binding DetailedExplanation}" 
                                                                            Foreground="#A0A0A0" FontSize="10" TextWrapping="Wrap" Margin="0,4,0,0"
                                                                            Visibility="{Binding DetailedExplanation, Converter={StaticResource NullOrEmptyToVisConverter}}"/>
                                                             </Grid>

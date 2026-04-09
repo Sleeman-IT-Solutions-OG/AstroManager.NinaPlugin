@@ -548,42 +548,7 @@ namespace AstroManager.NinaPlugin
                 var index = SchedulerConfigurations.IndexOf(_selectedSchedulerConfiguration);
                 if (index >= 0)
                 {
-                    var restored = new SchedulerConfigurationDto
-                    {
-                        Id = _selectedSchedulerConfigurationBackup.Id,
-                        Name = _selectedSchedulerConfigurationBackup.Name,
-                        PrimaryStrategy = _selectedSchedulerConfigurationBackup.PrimaryStrategy,
-                        SecondaryStrategy = _selectedSchedulerConfigurationBackup.SecondaryStrategy,
-                        TertiaryStrategy = _selectedSchedulerConfigurationBackup.TertiaryStrategy,
-                        MinAltitudeDegrees = _selectedSchedulerConfigurationBackup.MinAltitudeDegrees,
-                        FilterShootingPattern = _selectedSchedulerConfigurationBackup.FilterShootingPattern,
-                        FilterBatchSize = _selectedSchedulerConfigurationBackup.FilterBatchSize,
-                        GoalCompletionBehavior = _selectedSchedulerConfigurationBackup.GoalCompletionBehavior,
-                        LowerPriorityTo = _selectedSchedulerConfigurationBackup.LowerPriorityTo,
-                        ImagingEfficiencyPercent = _selectedSchedulerConfigurationBackup.ImagingEfficiencyPercent,
-                        MinSessionDurationMinutes = _selectedSchedulerConfigurationBackup.MinSessionDurationMinutes,
-                        MaxSequenceTimeMinutes = _selectedSchedulerConfigurationBackup.MaxSequenceTimeMinutes,
-                        MaxHoursPerTargetPerNight = _selectedSchedulerConfigurationBackup.MaxHoursPerTargetPerNight,
-                        MaxTotalHoursPerTarget = _selectedSchedulerConfigurationBackup.MaxTotalHoursPerTarget,
-                        UseMoonAvoidance = _selectedSchedulerConfigurationBackup.UseMoonAvoidance,
-                        AlwaysStopWhenNoTargetsForNight = _selectedSchedulerConfigurationBackup.AlwaysStopWhenNoTargetsForNight,
-                        EnableSafetyMonitorCheck = _selectedSchedulerConfigurationBackup.EnableSafetyMonitorCheck,
-                        EnableGuidingRmsCheck = _selectedSchedulerConfigurationBackup.EnableGuidingRmsCheck,
-                        MaxGuidingRmsArcSec = _selectedSchedulerConfigurationBackup.MaxGuidingRmsArcSec,
-                        EnableCloudCoverCheck = _selectedSchedulerConfigurationBackup.EnableCloudCoverCheck,
-                        MaxCloudCoverPercent = _selectedSchedulerConfigurationBackup.MaxCloudCoverPercent,
-                        EnableRainRateCheck = _selectedSchedulerConfigurationBackup.EnableRainRateCheck,
-                        MaxRainRate = _selectedSchedulerConfigurationBackup.MaxRainRate,
-                        EnableMountAltitudeCheck = _selectedSchedulerConfigurationBackup.EnableMountAltitudeCheck,
-                        MinMountAltitudeDegrees = _selectedSchedulerConfigurationBackup.MinMountAltitudeDegrees,
-                        EnableCoolerPowerCheck = _selectedSchedulerConfigurationBackup.EnableCoolerPowerCheck,
-                        MaxCoolerPowerPercent = _selectedSchedulerConfigurationBackup.MaxCoolerPowerPercent,
-                        ReduceCoolingOnHighCoolerPower = _selectedSchedulerConfigurationBackup.ReduceCoolingOnHighCoolerPower,
-                        CoolerWarmupDeltaDegrees = _selectedSchedulerConfigurationBackup.CoolerWarmupDeltaDegrees,
-                        ViolationAction = _selectedSchedulerConfigurationBackup.ViolationAction,
-                        ViolationRetryMinutes = _selectedSchedulerConfigurationBackup.ViolationRetryMinutes,
-                        IsDefault = _selectedSchedulerConfigurationBackup.IsDefault
-                    };
+                    var restored = CloneSchedulerConfigurationDto(_selectedSchedulerConfigurationBackup);
                     SchedulerConfigurations[index] = restored;
                 }
             }
@@ -680,38 +645,9 @@ namespace AstroManager.NinaPlugin
         private bool HasUnsavedSchedulerConfigChanges()
         {
             if (_selectedSchedulerConfiguration == null || _selectedSchedulerConfigurationBackup == null) return false;
-            return _selectedSchedulerConfiguration.Name != _selectedSchedulerConfigurationBackup.Name ||
-                   _selectedSchedulerConfiguration.PrimaryStrategy != _selectedSchedulerConfigurationBackup.PrimaryStrategy ||
-                   _selectedSchedulerConfiguration.SecondaryStrategy != _selectedSchedulerConfigurationBackup.SecondaryStrategy ||
-                   _selectedSchedulerConfiguration.TertiaryStrategy != _selectedSchedulerConfigurationBackup.TertiaryStrategy ||
-                   _selectedSchedulerConfiguration.MinAltitudeDegrees != _selectedSchedulerConfigurationBackup.MinAltitudeDegrees ||
-                   _selectedSchedulerConfiguration.FilterShootingPattern != _selectedSchedulerConfigurationBackup.FilterShootingPattern ||
-                   _selectedSchedulerConfiguration.FilterBatchSize != _selectedSchedulerConfigurationBackup.FilterBatchSize ||
-                   _selectedSchedulerConfiguration.GoalCompletionBehavior != _selectedSchedulerConfigurationBackup.GoalCompletionBehavior ||
-                   _selectedSchedulerConfiguration.LowerPriorityTo != _selectedSchedulerConfigurationBackup.LowerPriorityTo ||
-                   _selectedSchedulerConfiguration.ImagingEfficiencyPercent != _selectedSchedulerConfigurationBackup.ImagingEfficiencyPercent ||
-                   _selectedSchedulerConfiguration.MinSessionDurationMinutes != _selectedSchedulerConfigurationBackup.MinSessionDurationMinutes ||
-                   _selectedSchedulerConfiguration.MaxSequenceTimeMinutes != _selectedSchedulerConfigurationBackup.MaxSequenceTimeMinutes ||
-                   _selectedSchedulerConfiguration.MaxHoursPerTargetPerNight != _selectedSchedulerConfigurationBackup.MaxHoursPerTargetPerNight ||
-                   _selectedSchedulerConfiguration.MaxTotalHoursPerTarget != _selectedSchedulerConfigurationBackup.MaxTotalHoursPerTarget ||
-                   _selectedSchedulerConfiguration.UseMoonAvoidance != _selectedSchedulerConfigurationBackup.UseMoonAvoidance ||
-                   _selectedSchedulerConfiguration.AlwaysStopWhenNoTargetsForNight != _selectedSchedulerConfigurationBackup.AlwaysStopWhenNoTargetsForNight ||
-                   _selectedSchedulerConfiguration.EnableSafetyMonitorCheck != _selectedSchedulerConfigurationBackup.EnableSafetyMonitorCheck ||
-                   _selectedSchedulerConfiguration.EnableGuidingRmsCheck != _selectedSchedulerConfigurationBackup.EnableGuidingRmsCheck ||
-                   _selectedSchedulerConfiguration.MaxGuidingRmsArcSec != _selectedSchedulerConfigurationBackup.MaxGuidingRmsArcSec ||
-                   _selectedSchedulerConfiguration.EnableCloudCoverCheck != _selectedSchedulerConfigurationBackup.EnableCloudCoverCheck ||
-                   _selectedSchedulerConfiguration.MaxCloudCoverPercent != _selectedSchedulerConfigurationBackup.MaxCloudCoverPercent ||
-                   _selectedSchedulerConfiguration.EnableRainRateCheck != _selectedSchedulerConfigurationBackup.EnableRainRateCheck ||
-                   _selectedSchedulerConfiguration.MaxRainRate != _selectedSchedulerConfigurationBackup.MaxRainRate ||
-                   _selectedSchedulerConfiguration.EnableMountAltitudeCheck != _selectedSchedulerConfigurationBackup.EnableMountAltitudeCheck ||
-                   _selectedSchedulerConfiguration.MinMountAltitudeDegrees != _selectedSchedulerConfigurationBackup.MinMountAltitudeDegrees ||
-                   _selectedSchedulerConfiguration.EnableCoolerPowerCheck != _selectedSchedulerConfigurationBackup.EnableCoolerPowerCheck ||
-                   _selectedSchedulerConfiguration.MaxCoolerPowerPercent != _selectedSchedulerConfigurationBackup.MaxCoolerPowerPercent ||
-                   _selectedSchedulerConfiguration.ReduceCoolingOnHighCoolerPower != _selectedSchedulerConfigurationBackup.ReduceCoolingOnHighCoolerPower ||
-                   _selectedSchedulerConfiguration.CoolerWarmupDeltaDegrees != _selectedSchedulerConfigurationBackup.CoolerWarmupDeltaDegrees ||
-                   _selectedSchedulerConfiguration.ViolationAction != _selectedSchedulerConfigurationBackup.ViolationAction ||
-                   _selectedSchedulerConfiguration.ViolationRetryMinutes != _selectedSchedulerConfigurationBackup.ViolationRetryMinutes ||
-                   _selectedSchedulerConfiguration.IsDefault != _selectedSchedulerConfigurationBackup.IsDefault;
+            var currentJson = System.Text.Json.JsonSerializer.Serialize(_selectedSchedulerConfiguration);
+            var backupJson = System.Text.Json.JsonSerializer.Serialize(_selectedSchedulerConfigurationBackup);
+            return !string.Equals(currentJson, backupJson, StringComparison.Ordinal);
         }
 
         private bool HasUnsavedMoonAvoidanceProfileChanges()
@@ -823,6 +759,7 @@ namespace AstroManager.NinaPlugin
                 StartDate = DateTime.Today,
                 EndDate = DateTime.Today.AddYears(1),
                 PrimaryStrategy = Shared.Model.Enums.TargetSelectionStrategy.PriorityFirst,
+                PrioritizationMode = Shared.Model.Enums.PrioritizationMode.Simple,
                 MinAltitudeDegrees = 30,
                 ImagingEfficiencyPercent = 75,
                 FilterShootingPattern = "Loop",
@@ -834,6 +771,7 @@ namespace AstroManager.NinaPlugin
                 ViolationAction = Shared.Model.Enums.SchedulerViolationAction.StopScheduler,
                 ViolationRetryMinutes = 10
             };
+            EnsureSchedulerConfigurationWeightedCriteriaInitialized(newConfig);
             
             var result = await _apiClient.CreateSchedulerConfigurationAsync(newConfig);
             if (result != null)
@@ -892,39 +830,11 @@ namespace AstroManager.NinaPlugin
             var configToCopy = config ?? _selectedSchedulerConfiguration;
             if (configToCopy == null) return;
             
-            var copyDto = new SchedulerConfigurationDto
-            {
-                Name = $"{configToCopy.Name} (Copy)",
-                StartDate = configToCopy.StartDate,
-                EndDate = configToCopy.EndDate,
-                PrimaryStrategy = configToCopy.PrimaryStrategy,
-                SecondaryStrategy = configToCopy.SecondaryStrategy,
-                TertiaryStrategy = configToCopy.TertiaryStrategy,
-                MinAltitudeDegrees = configToCopy.MinAltitudeDegrees,
-                ImagingEfficiencyPercent = configToCopy.ImagingEfficiencyPercent,
-                FilterShootingPattern = configToCopy.FilterShootingPattern,
-                FilterBatchSize = configToCopy.FilterBatchSize,
-                GoalCompletionBehavior = configToCopy.GoalCompletionBehavior,
-                LowerPriorityTo = configToCopy.LowerPriorityTo,
-                UseMoonAvoidance = configToCopy.UseMoonAvoidance,
-                MinSessionDurationMinutes = configToCopy.MinSessionDurationMinutes,
-                AlwaysStopWhenNoTargetsForNight = configToCopy.AlwaysStopWhenNoTargetsForNight,
-                EnableSafetyMonitorCheck = configToCopy.EnableSafetyMonitorCheck,
-                EnableGuidingRmsCheck = configToCopy.EnableGuidingRmsCheck,
-                MaxGuidingRmsArcSec = configToCopy.MaxGuidingRmsArcSec,
-                EnableCloudCoverCheck = configToCopy.EnableCloudCoverCheck,
-                MaxCloudCoverPercent = configToCopy.MaxCloudCoverPercent,
-                EnableRainRateCheck = configToCopy.EnableRainRateCheck,
-                MaxRainRate = configToCopy.MaxRainRate,
-                EnableMountAltitudeCheck = configToCopy.EnableMountAltitudeCheck,
-                MinMountAltitudeDegrees = configToCopy.MinMountAltitudeDegrees,
-                EnableCoolerPowerCheck = configToCopy.EnableCoolerPowerCheck,
-                MaxCoolerPowerPercent = configToCopy.MaxCoolerPowerPercent,
-                ReduceCoolingOnHighCoolerPower = configToCopy.ReduceCoolingOnHighCoolerPower,
-                CoolerWarmupDeltaDegrees = configToCopy.CoolerWarmupDeltaDegrees,
-                ViolationAction = configToCopy.ViolationAction,
-                ViolationRetryMinutes = configToCopy.ViolationRetryMinutes
-            };
+            var copyDto = CloneSchedulerConfigurationDto(configToCopy);
+            copyDto.Id = Guid.Empty;
+            copyDto.Name = $"{configToCopy.Name} (Copy)";
+            copyDto.IsDefault = false;
+            EnsureSchedulerConfigurationWeightedCriteriaInitialized(copyDto);
             
             var result = await _apiClient.CreateSchedulerConfigurationAsync(copyDto);
             if (result != null)
