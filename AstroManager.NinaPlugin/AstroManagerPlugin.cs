@@ -1739,6 +1739,9 @@ namespace AstroManager.NinaPlugin
         public bool HasSkippedTargets => _schedulerPreview?.SkippedTargets?.Any() == true;
         public int SkippedTargetsCount => _schedulerPreview?.SkippedTargets?.Count ?? 0;
         public bool HasUnscheduledSlots => _schedulerPreview?.UnscheduledSlots?.Any() == true;
+        public bool ShowSchedulerPreviewWeightedScores =>
+            SelectedPreviewConfigId.HasValue
+            && SchedulerConfigurations.FirstOrDefault(c => c.Id == SelectedPreviewConfigId.Value)?.PrioritizationMode == Shared.Model.Enums.PrioritizationMode.Weighted;
         
         private ObservableCollection<SchedulerPreviewSessionDto> _schedulerPreviewSessions = new();
         public ObservableCollection<SchedulerPreviewSessionDto> SchedulerPreviewSessions
@@ -2160,7 +2163,12 @@ namespace AstroManager.NinaPlugin
         public Guid? SelectedPreviewConfigId
         {
             get => _selectedPreviewConfigId;
-            set { _selectedPreviewConfigId = value; RaisePropertyChanged(); }
+            set
+            {
+                _selectedPreviewConfigId = value;
+                RaisePropertyChanged();
+                RaisePropertyChanged(nameof(ShowSchedulerPreviewWeightedScores));
+            }
         }
         
         // Preview date selection
