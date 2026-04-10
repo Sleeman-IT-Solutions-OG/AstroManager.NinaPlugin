@@ -1158,7 +1158,9 @@ namespace AstroManager.NinaPlugin
                 _currentSlot = slot;
                 UpdateFilterNameCache(slot);
 
-                if (slot.SlotType == SlotType.Exposure && string.IsNullOrWhiteSpace(slot.NinaFilterName))
+                if (slot.SlotType == SlotType.Exposure
+                    && slot.ShouldAutomateFilterChanges
+                    && string.IsNullOrWhiteSpace(slot.NinaFilterName))
                 {
                     slot.NinaFilterName = ResolveNinaFilterNameForSlot(slot.Filter);
                     var targetFilter = !string.IsNullOrWhiteSpace(slot.NinaFilterName) ? slot.NinaFilterName : slot.Filter;
@@ -2079,7 +2081,7 @@ namespace AstroManager.NinaPlugin
 
             // 2. SWITCH FILTER for mono cameras (idempotent if already on same filter)
             var filterToSwitch = !string.IsNullOrEmpty(slot.NinaFilterName) ? slot.NinaFilterName : slot.Filter;
-            if (slot.IsMono && !string.IsNullOrEmpty(filterToSwitch))
+            if (slot.ShouldAutomateFilterChanges && slot.IsMono && !string.IsNullOrEmpty(filterToSwitch))
             {
                 Logger.Info($"[FILTER-SWITCH] Slot.Filter='{slot.Filter}', Slot.NinaFilterName='{slot.NinaFilterName ?? "(null)"}' -> Using: '{filterToSwitch}'");
                 if (!slot.RequiresFilterChange)
@@ -2092,6 +2094,15 @@ namespace AstroManager.NinaPlugin
                 _ = _heartbeatService.ForceStatusUpdateAsync();
                 await SwitchFilterAsync(filterToSwitch, progress, token);
                 _currentFilter = filterToSwitch;
+            }
+            else if (!slot.ShouldAutomateFilterChanges)
+            {
+                Logger.Info("AstroManager Scheduler: Manual filter mode active - skipping NINA filter automation");
+                var ninaReportedFilter = GetCurrentNinaFilterName();
+                if (!string.IsNullOrWhiteSpace(ninaReportedFilter))
+                {
+                    _currentFilter = ninaReportedFilter;
+                }
             }
             else if (!slot.IsMono)
             {
