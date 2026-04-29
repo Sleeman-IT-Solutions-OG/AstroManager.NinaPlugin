@@ -309,6 +309,7 @@ namespace AstroManager.NinaPlugin.Services
             var panelNumber = pendingContext?.PanelNumber;
             var captureId = pendingContext?.CaptureId;
             var schedulerFilter = pendingContext?.Filter;
+            var preferSchedulerFilterForCaptureAttribution = pendingContext?.PreferSchedulerFilterForCaptureAttribution == true;
             var capturedAtUtc = DateTime.UtcNow;
             var captureHfr = SanitizeDouble(e.StarDetectionAnalysis?.HFR);
             var captureStarCount = e.StarDetectionAnalysis?.DetectedStars;
@@ -353,9 +354,26 @@ namespace AstroManager.NinaPlugin.Services
                     ? Path.GetFileName(e.PathToImage.LocalPath) 
                     : null;
 
-                var filterToUse = isAmScheduledCapture && !string.IsNullOrEmpty(schedulerFilter) 
-                    ? schedulerFilter 
-                    : e.Filter;
+                var imageReportedFilter = e.Filter?.Trim();
+                var scheduledFilter = schedulerFilter?.Trim();
+
+                if (!string.IsNullOrWhiteSpace(imageReportedFilter)
+                    && !string.IsNullOrWhiteSpace(scheduledFilter)
+                    && !string.Equals(imageReportedFilter, scheduledFilter, StringComparison.OrdinalIgnoreCase))
+                {
+                    if (preferSchedulerFilterForCaptureAttribution)
+                    {
+                        Logger.Info($"AstroManager: AstroManager/runtime filter '{scheduledFilter}' overrides N.I.N.A. image filter '{imageReportedFilter}' for capture attribution");
+                    }
+                    else
+                    {
+                        Logger.Info($"AstroManager: Image filter '{imageReportedFilter}' reported by N.I.N.A. overrides scheduler filter '{scheduledFilter}' for capture attribution");
+                    }
+                }
+
+                var filterToUse = preferSchedulerFilterForCaptureAttribution
+                    ? (!string.IsNullOrWhiteSpace(scheduledFilter) ? scheduledFilter : imageReportedFilter)
+                    : (!string.IsNullOrWhiteSpace(imageReportedFilter) ? imageReportedFilter : scheduledFilter);
                 
                 dto = new UploadImageThumbnailDto
                 {

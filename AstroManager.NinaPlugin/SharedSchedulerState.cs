@@ -16,6 +16,7 @@ namespace AstroManager.NinaPlugin
         public Guid? PanelId { get; set; }
         public int? PanelNumber { get; set; }
         public string? Filter { get; set; }
+        public bool PreferSchedulerFilterForCaptureAttribution { get; set; }
         public double? ExposureTime { get; set; }
         public Guid? CaptureId { get; set; }
         public DateTime CapturedAt { get; set; }
@@ -80,6 +81,11 @@ namespace AstroManager.NinaPlugin
         /// Current filter being used
         /// </summary>
         public string? CurrentFilter { get; private set; }
+
+        /// <summary>
+        /// Whether AM/runtime slot filter should win over N.I.N.A. image metadata for capture attribution.
+        /// </summary>
+        public bool CurrentPreferSchedulerFilterForCaptureAttribution { get; private set; }
         
         /// <summary>
         /// Current exposure time in seconds
@@ -124,7 +130,15 @@ namespace AstroManager.NinaPlugin
         /// <summary>
         /// Update the current slot state when scheduler starts a new exposure
         /// </summary>
-        public void SetCurrentSlot(Guid? targetId, string? targetName, Guid? goalId, Guid? panelId, int? panelNumber, string? filter, double? exposureTime)
+        public void SetCurrentSlot(
+            Guid? targetId,
+            string? targetName,
+            Guid? goalId,
+            Guid? panelId,
+            int? panelNumber,
+            string? filter,
+            bool preferSchedulerFilterForCaptureAttribution,
+            double? exposureTime)
         {
             CurrentScheduledTargetId = targetId;
             CurrentTargetName = targetName;
@@ -132,6 +146,7 @@ namespace AstroManager.NinaPlugin
             CurrentPanelId = panelId;
             CurrentPanelNumber = panelNumber;
             CurrentFilter = filter;
+            CurrentPreferSchedulerFilterForCaptureAttribution = preferSchedulerFilterForCaptureAttribution;
             CurrentExposureTime = exposureTime;
         }
         
@@ -158,6 +173,7 @@ namespace AstroManager.NinaPlugin
                 PanelId = CurrentPanelId,
                 PanelNumber = CurrentPanelNumber,
                 Filter = CurrentFilter,
+                PreferSchedulerFilterForCaptureAttribution = CurrentPreferSchedulerFilterForCaptureAttribution,
                 ExposureTime = CurrentExposureTime,
                 CaptureId = CurrentCaptureId,
                 CapturedAt = DateTime.UtcNow
@@ -343,6 +359,7 @@ namespace AstroManager.NinaPlugin
             CurrentPanelId = null;
             CurrentPanelNumber = null;
             CurrentFilter = null;
+            CurrentPreferSchedulerFilterForCaptureAttribution = false;
             CurrentExposureTime = null;
             CurrentCaptureId = null;
             IsActiveExposure = false;

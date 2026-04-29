@@ -1181,6 +1181,7 @@ namespace AstroManager.NinaPlugin
                     slot.PanelId,
                     slot.PanelNumber,
                     slot.Filter,
+                    slot.PreferSchedulerFilterForCaptureAttribution,
                     slot.ExposureTimeSeconds);
                 
                 // Log detailed slot info for debugging
@@ -2098,10 +2099,18 @@ namespace AstroManager.NinaPlugin
             else if (!slot.ShouldAutomateFilterChanges)
             {
                 Logger.Info("AstroManager Scheduler: Manual filter mode active - skipping NINA filter automation");
-                var ninaReportedFilter = GetCurrentNinaFilterName();
-                if (!string.IsNullOrWhiteSpace(ninaReportedFilter))
+                if (slot.PreferSchedulerFilterForCaptureAttribution)
                 {
-                    _currentFilter = ninaReportedFilter;
+                    _currentFilter = slot.Filter;
+                    Logger.Info($"AstroManager Scheduler: Direct AstroManager manual filter mode active - using slot filter '{slot.Filter}' as current filter context");
+                }
+                else
+                {
+                    var ninaReportedFilter = GetCurrentNinaFilterName();
+                    if (!string.IsNullOrWhiteSpace(ninaReportedFilter))
+                    {
+                        _currentFilter = ninaReportedFilter;
+                    }
                 }
             }
             else if (!slot.IsMono)
