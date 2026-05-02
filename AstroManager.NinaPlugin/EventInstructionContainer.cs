@@ -20,9 +20,13 @@ namespace AstroManager.NinaPlugin
     /// </summary>
     public enum EventContainerType
     {
+        BeforeWait,
+        AfterWait,
         BeforeNewTarget,
         AfterEachExposure,
-        AfterTarget
+        AfterTarget,
+        AfterEachTarget,
+        AfterTargetComplete
     }
 
     /// <summary>
@@ -156,7 +160,7 @@ namespace AstroManager.NinaPlugin
         /// <summary>
         /// Reset all items in the container for re-execution
         /// </summary>
-        public void ResetAll()
+        public override void ResetAll()
         {
             foreach (var item in Items)
             {
@@ -168,7 +172,7 @@ namespace AstroManager.NinaPlugin
         public override object Clone()
         {
             var clone = new EventInstructionContainer(EventContainerType, Parent);
-            clone.Items = new ObservableCollection<ISequenceItem>(Items.Select(i => i.Clone() as ISequenceItem));
+            clone.Items = new ObservableCollection<ISequenceItem>(Items.Select(i => (ISequenceItem)i.Clone()));
             foreach (var item in clone.Items)
             {
                 item.AttachNewParent(clone);

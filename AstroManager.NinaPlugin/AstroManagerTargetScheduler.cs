@@ -34,6 +34,7 @@ using NINA.Sequencer.SequenceItem.FilterWheel;
 using NINA.Sequencer.Trigger;
 using NINA.Sequencer.Trigger.Platesolving;
 using NINA.Sequencer.Utility;
+using NINA.Sequencer.Validations;
 using NINA.WPF.Base.Interfaces.Mediator;
 using NINA.WPF.Base.Interfaces.ViewModel;
 using NINA.WPF.Base.Interfaces;
@@ -76,6 +77,14 @@ namespace AstroManager.NinaPlugin
             _ => "ℹ️"
         };
     }
+
+    public class SchedulerTargetProgressRow
+    {
+        public string ItemName { get; set; } = string.Empty;
+        public string FilterName { get; set; } = string.Empty;
+        public string StartDisplay { get; set; } = string.Empty;
+        public string EndDisplay { get; set; } = string.Empty;
+    }
     
     /// <summary>
     /// AstroManager Target Scheduler - Similar to Target Scheduler plugin
@@ -85,11 +94,11 @@ namespace AstroManager.NinaPlugin
     /// </summary>
     [Export(typeof(ISequenceItem))]
     [Export(typeof(ISequenceContainer))]
-    [ExportMetadata("Name", "AstroManager Scheduler")]
-    [ExportMetadata("Description", "Fetches and images targets from AstroManager. Add loop conditions to control when to stop.")]
+    [ExportMetadata("Name", "AstroManager Target Scheduler (legacy)")]
+    [ExportMetadata("Description", "Legacy AstroManager scheduler instruction. Prefer AstroManager Scheduler Container for new sequences.")]
     [ExportMetadata("Icon", "SpaceShuttle")]
     [ExportMetadata("Category", "AstroManager")]
-    public class AstroManagerTargetScheduler : SequenceContainer, IDeepSkyObjectContainer
+    public class AstroManagerTargetScheduler : SequentialContainer, IDeepSkyObjectContainer, IValidatable
     {
         private static readonly TimeSpan PeriodicSafetyCheckInterval = TimeSpan.FromMinutes(15);
         private static readonly TimeSpan ConfigurationRefreshInterval = TimeSpan.FromMinutes(5);
@@ -199,6 +208,7 @@ namespace AstroManager.NinaPlugin
         private bool? _lastGuiderSettlingSample;
         private int _guiderSettlingSampleCount;
         private bool? _stableGuiderSettlingState;
+        private readonly HashSet<Guid> _completedTargetEventsRaised = new();
         
         #region Custom Event Containers
         
@@ -208,6 +218,20 @@ namespace AstroManager.NinaPlugin
         /// </summary>
         [JsonProperty]
         public EventInstructionContainer BeforeTargetContainer { get; set; }
+
+        /// <summary>
+        /// Instructions to run before scheduler-directed wait periods.
+        /// Useful for parking or other observatory state changes while idle.
+        /// </summary>
+        [JsonProperty]
+        public EventInstructionContainer BeforeWaitContainer { get; set; }
+
+        /// <summary>
+        /// Instructions to run after scheduler-directed wait periods.
+        /// Useful for unpark, warm-up checks, or other resume logic.
+        /// </summary>
+        [JsonProperty]
+        public EventInstructionContainer AfterWaitContainer { get; set; }
         
         /// <summary>
         /// Instructions to run after each exposure completes.
@@ -222,6 +246,19 @@ namespace AstroManager.NinaPlugin
         /// </summary>
         [JsonProperty]
         public EventInstructionContainer AfterTargetContainer { get; set; }
+
+        /// <summary>
+        /// Instructions to run after every completed target plan segment.
+        /// In AstroManager's slot-based runtime, a plan segment maps to a completed exposure slot.
+        /// </summary>
+        [JsonProperty]
+        public EventInstructionContainer AfterEachTargetContainer { get; set; }
+
+        /// <summary>
+        /// Instructions to run when a target reaches full completion across all active imaging goals.
+        /// </summary>
+        [JsonProperty]
+        public EventInstructionContainer AfterTargetCompleteContainer { get; set; }
         
         #endregion
         
@@ -231,6 +268,18 @@ namespace AstroManager.NinaPlugin
         /// Status log entries for display in UI (shared with dock panel)
         /// </summary>
         public ObservableCollection<SchedulerLogEntry> StatusLog => SharedSchedulerLog.Instance.LogEntries;
+        public ObservableCollection<SchedulerTargetProgressRow> TargetProgressItems { get; } = new();
+
+        public string ProjectTargetDisplay { get; private set; } = string.Empty;
+        public string CoordinatesDisplay { get; private set; } = string.Empty;
+        public string StopAtDisplay { get; private set; } = string.Empty;
+        public DateTime? AstronomicalDusk { get; private set; }
+        public DateTime? AstronomicalDawn { get; private set; }
+        public double ObserverLatitude => _profileService.ActiveProfile.AstrometrySettings.Latitude;
+        public double ObserverLongitude => _profileService.ActiveProfile.AstrometrySettings.Longitude;
+        public double MinAltitude => 30.0;
+        public Coordinates? CurrentTargetCoordinates => Target?.InputCoordinates?.Coordinates;
+        public bool HasTargetContext => Target != null && !string.IsNullOrWhiteSpace(Target.TargetName);
         
         /// <summary>
         /// Add a log entry with timestamp (uses shared log)
@@ -611,7 +660,7 @@ namespace AstroManager.NinaPlugin
             IWindowServiceFactory windowServiceFactory,
             IAutoFocusVMFactory autoFocusVMFactory,
             ScheduledTargetStore targetStore) 
-            : base(new SequentialStrategy())
+            : base()
         {
             _apiClient = apiClient;
             _heartbeatService = heartbeatService;
@@ -641,15 +690,40 @@ namespace AstroManager.NinaPlugin
             RefreshConfigurationsCommand = new RelayCommand(async _ => await LoadConfigurationsAsync());
             
             // Initialize empty Target for IDeepSkyObjectContainer
+            NighttimeData = null!;
             Target = CreateEmptyTarget();
+            RefreshNighttimeWindowData();
             
-            // Initialize custom event containers (like TargetScheduler's pattern)
-            BeforeTargetContainer = new EventInstructionContainer(EventContainerType.BeforeNewTarget, this);
-            AfterEachExposureContainer = new EventInstructionContainer(EventContainerType.AfterEachExposure, this);
-            AfterTargetContainer = new EventInstructionContainer(EventContainerType.AfterTarget, this);
+            EnsureEventContainersInitialized();
             
             // Auto-load configurations when created
             _ = LoadConfigurationsAsync();
+        }
+
+        protected AstroManagerTargetScheduler(AstroManagerTargetScheduler source)
+            : this(
+                source._apiClient,
+                source._heartbeatService,
+                source._profileService,
+                source._telescopeMediator,
+                source._guiderMediator,
+                source._domeMediator,
+                source._domeFollower,
+                source._safetyMonitorMediator,
+                source._weatherDataMediator,
+                source._filterWheelMediator,
+                source._cameraMediator,
+                source._focuserMediator,
+                source._rotatorMediator,
+                source._imagingMediator,
+                source._imageSaveMediator,
+                source._imageHistoryVM,
+                source._sequenceMediator,
+                source._plateSolverFactory,
+                source._windowServiceFactory,
+                source._autoFocusVMFactory,
+                source._targetStore)
+        {
         }
         
         /// <summary>
@@ -659,46 +733,40 @@ namespace AstroManager.NinaPlugin
         [OnDeserialized]
         public void OnDeserializedMethod(StreamingContext context)
         {
-            // Ensure event containers exist and have proper parent references
-            if (BeforeTargetContainer == null)
+            EnsureEventContainersInitialized();
+        }
+
+        protected void EnsureEventContainersInitialized()
+        {
+            BeforeWaitContainer = EnsureEventContainer(BeforeWaitContainer, EventContainerType.BeforeWait);
+            AfterWaitContainer = EnsureEventContainer(AfterWaitContainer, EventContainerType.AfterWait);
+            BeforeTargetContainer = EnsureEventContainer(BeforeTargetContainer, EventContainerType.BeforeNewTarget);
+            AfterEachExposureContainer = EnsureEventContainer(AfterEachExposureContainer, EventContainerType.AfterEachExposure);
+            AfterTargetContainer = EnsureEventContainer(AfterTargetContainer, EventContainerType.AfterTarget);
+            AfterEachTargetContainer = EnsureEventContainer(AfterEachTargetContainer, EventContainerType.AfterEachTarget);
+            AfterTargetCompleteContainer = EnsureEventContainer(AfterTargetCompleteContainer, EventContainerType.AfterTargetComplete);
+        }
+
+        private EventInstructionContainer EnsureEventContainer(EventInstructionContainer? container, EventContainerType containerType)
+        {
+            if (container == null)
             {
-                BeforeTargetContainer = new EventInstructionContainer(EventContainerType.BeforeNewTarget, this);
+                return new EventInstructionContainer(containerType, this);
             }
-            else
+
+            container.ResetParent(this);
+            container.EventContainerType = containerType;
+            if (string.IsNullOrEmpty(container.Name))
             {
-                BeforeTargetContainer.ResetParent(this);
-                // Ensure Name is set (required for NINA's DropIntoBehavior)
-                if (string.IsNullOrEmpty(BeforeTargetContainer.Name))
-                {
-                    BeforeTargetContainer.Name = EventContainerType.BeforeNewTarget.ToString();
-                }
+                container.Name = containerType.ToString();
             }
-            
-            if (AfterEachExposureContainer == null)
+
+            if (string.IsNullOrEmpty(container.Category))
             {
-                AfterEachExposureContainer = new EventInstructionContainer(EventContainerType.AfterEachExposure, this);
+                container.Category = "AstroManager";
             }
-            else
-            {
-                AfterEachExposureContainer.ResetParent(this);
-                if (string.IsNullOrEmpty(AfterEachExposureContainer.Name))
-                {
-                    AfterEachExposureContainer.Name = EventContainerType.AfterEachExposure.ToString();
-                }
-            }
-            
-            if (AfterTargetContainer == null)
-            {
-                AfterTargetContainer = new EventInstructionContainer(EventContainerType.AfterTarget, this);
-            }
-            else
-            {
-                AfterTargetContainer.ResetParent(this);
-                if (string.IsNullOrEmpty(AfterTargetContainer.Name))
-                {
-                    AfterTargetContainer.Name = EventContainerType.AfterTarget.ToString();
-                }
-            }
+
+            return container;
         }
         
         /// <summary>
@@ -714,6 +782,7 @@ namespace AstroManager.NinaPlugin
             target.TargetName = string.Empty;
             target.InputCoordinates.Coordinates = new Coordinates(Angle.Zero, Angle.Zero, Epoch.J2000);
             target.PositionAngle = 0;
+            target.DeepSkyObject = new DeepSkyObject(string.Empty, target.InputCoordinates.Coordinates, profile.AstrometrySettings.Horizon);
             return target;
         }
         
@@ -751,8 +820,10 @@ namespace AstroManager.NinaPlugin
                     Epoch.J2000));
             inputTarget.PositionAngle = slot.PositionAngle ?? 0;
             inputTarget.Expanded = true;
+            inputTarget.DeepSkyObject = CreateDeepSkyObject(targetName, inputTarget.InputCoordinates.Coordinates);
             
             Target = inputTarget;
+            UpdateTargetPresentation(slot);
             
             Logger.Info($"AstroManager Scheduler: SetTarget - Name={targetName}, RA={slot.RightAscensionHours:F4}h, Dec={slot.DeclinationDegrees:F2}°, PA={slot.PositionAngle ?? 0:F1}°");
             
@@ -767,6 +838,116 @@ namespace AstroManager.NinaPlugin
         {
             Target = CreateEmptyTarget();
             CurrentTargetName = "None";
+            RunOnUiThread(() =>
+            {
+                ProjectTargetDisplay = string.Empty;
+                CoordinatesDisplay = string.Empty;
+                StopAtDisplay = string.Empty;
+                TargetProgressItems.Clear();
+                RaiseTargetContextPropertiesChanged();
+            });
+        }
+
+        private DeepSkyObject CreateDeepSkyObject(string targetName, Coordinates coordinates)
+        {
+            var profile = _profileService.ActiveProfile;
+            var dso = new DeepSkyObject(string.Empty, coordinates, profile.AstrometrySettings.Horizon);
+            dso.Name = targetName;
+            dso.SetDateAndPosition(DateTime.Now, profile.AstrometrySettings.Latitude, profile.AstrometrySettings.Longitude);
+            dso.Refresh();
+            return dso;
+        }
+
+        private void UpdateTargetPresentation(NextSlotDto slot)
+        {
+            var targetDisplay = slot.TargetName ?? "Unknown";
+            if (!string.IsNullOrWhiteSpace(slot.PanelName))
+            {
+                targetDisplay = $"{targetDisplay} / {slot.PanelName}";
+            }
+
+            var coordinatesDisplay = $"RA {slot.RightAscensionHours:F4}h  Dec {slot.DeclinationDegrees:F2}°";
+            var stopAtDisplay = slot.WaitUntilUtc.HasValue
+                ? slot.WaitUntilUtc.Value.ToLocalTime().ToString("yyyy-MM-dd HH:mm")
+                : slot.Message ?? string.Empty;
+            var progressRow = new SchedulerTargetProgressRow
+            {
+                ItemName = targetDisplay,
+                FilterName = slot.Filter ?? string.Empty,
+                StartDisplay = $"{slot.CompletedExposures}/{slot.TotalGoalExposures}",
+                EndDisplay = $"{slot.ExposureTimeSeconds:F0}s"
+            };
+
+            RunOnUiThread(() =>
+            {
+                ProjectTargetDisplay = targetDisplay;
+                CoordinatesDisplay = coordinatesDisplay;
+                StopAtDisplay = stopAtDisplay;
+                TargetProgressItems.Clear();
+                TargetProgressItems.Add(progressRow);
+                RaiseTargetContextPropertiesChanged();
+            });
+        }
+
+        private void RaiseTargetContextPropertiesChanged()
+        {
+            RaisePropertyChanged(nameof(ProjectTargetDisplay));
+            RaisePropertyChanged(nameof(CoordinatesDisplay));
+            RaisePropertyChanged(nameof(StopAtDisplay));
+            RaisePropertyChanged(nameof(CurrentTargetCoordinates));
+            RaisePropertyChanged(nameof(HasTargetContext));
+            RaisePropertyChanged(nameof(TargetProgressItems));
+            RaisePropertyChanged(nameof(Target));
+        }
+
+        private void RefreshNighttimeWindowData()
+        {
+            try
+            {
+                var latitude = _profileService.ActiveProfile.AstrometrySettings.Latitude;
+                var longitude = _profileService.ActiveProfile.AstrometrySettings.Longitude;
+                var now = DateTime.UtcNow;
+                var tonight = now.Hour < 12 ? now.Date.AddDays(-1) : now.Date;
+
+                var duskEvent = AstroUtil.GetSunRiseAndSet(tonight, latitude, longitude);
+                var dawnEvent = AstroUtil.GetSunRiseAndSet(tonight.AddDays(1), latitude, longitude);
+
+                var dusk = duskEvent?.Set?.AddHours(1.5) ?? tonight.AddHours(19);
+                var dawn = dawnEvent?.Rise?.AddHours(-1.5) ?? tonight.AddDays(1).AddHours(5);
+
+                if (now > dawn)
+                {
+                    tonight = tonight.AddDays(1);
+                    duskEvent = AstroUtil.GetSunRiseAndSet(tonight, latitude, longitude);
+                    dawnEvent = AstroUtil.GetSunRiseAndSet(tonight.AddDays(1), latitude, longitude);
+                    dusk = duskEvent?.Set?.AddHours(1.5) ?? tonight.AddHours(19);
+                    dawn = dawnEvent?.Rise?.AddHours(-1.5) ?? tonight.AddDays(1).AddHours(5);
+                }
+
+                RunOnUiThread(() =>
+                {
+                    AstronomicalDusk = dusk;
+                    AstronomicalDawn = dawn;
+                    RaisePropertyChanged(nameof(AstronomicalDusk));
+                    RaisePropertyChanged(nameof(AstronomicalDawn));
+                });
+            }
+            catch (Exception ex)
+            {
+                Logger.Debug($"AstroManager Scheduler: Failed to refresh nighttime window data: {ex.Message}");
+            }
+        }
+
+        private void RunOnUiThread(Action action)
+        {
+            var dispatcher = System.Windows.Application.Current?.Dispatcher;
+            if (dispatcher == null || dispatcher.CheckAccess())
+            {
+                action();
+                return;
+            }
+
+            dispatcher.Invoke(action);
         }
         
         /// <summary>
@@ -800,32 +981,124 @@ namespace AstroManager.NinaPlugin
             }
         }
 
-        public override object Clone()
+        protected virtual AstroManagerTargetScheduler CreateCloneInstance()
         {
-            var clone = new AstroManagerTargetScheduler(
+            return new AstroManagerTargetScheduler(
                 _apiClient,
                 _heartbeatService,
-                _profileService, 
-                _telescopeMediator, 
-                _guiderMediator, 
-                _domeMediator, 
-                _domeFollower, 
+                _profileService,
+                _telescopeMediator,
+                _guiderMediator,
+                _domeMediator,
+                _domeFollower,
                 _safetyMonitorMediator,
                 _weatherDataMediator,
-                _filterWheelMediator, 
-                _cameraMediator, 
+                _filterWheelMediator,
+                _cameraMediator,
                 _focuserMediator,
                 _rotatorMediator,
-                _imagingMediator, 
-                _imageSaveMediator, 
-                _imageHistoryVM, 
+                _imagingMediator,
+                _imageSaveMediator,
+                _imageHistoryVM,
                 _sequenceMediator,
                 _plateSolverFactory,
                 _windowServiceFactory,
                 _autoFocusVMFactory,
                 _targetStore);
+        }
+
+        protected void CopyCloneStateTo(AstroManagerTargetScheduler clone)
+        {
+            clone.Icon = Icon;
+            clone.Name = Name;
+            clone.Category = Category;
+            clone.Description = Description;
             clone.SelectedConfigurationId = SelectedConfigurationId;
+            clone.Items = new ObservableCollection<ISequenceItem>(Items.Select(i => (ISequenceItem)i.Clone()));
+            clone.Triggers = new ObservableCollection<ISequenceTrigger>(Triggers.Select(t => (ISequenceTrigger)t.Clone()));
+            clone.Conditions = new ObservableCollection<ISequenceCondition>(Conditions.Select(c => (ISequenceCondition)c.Clone()));
+
+            clone.BeforeWaitContainer = (EventInstructionContainer)BeforeWaitContainer.Clone();
+            clone.AfterWaitContainer = (EventInstructionContainer)AfterWaitContainer.Clone();
+            clone.BeforeTargetContainer = (EventInstructionContainer)BeforeTargetContainer.Clone();
+            clone.AfterEachExposureContainer = (EventInstructionContainer)AfterEachExposureContainer.Clone();
+            clone.AfterTargetContainer = (EventInstructionContainer)AfterTargetContainer.Clone();
+            clone.AfterEachTargetContainer = (EventInstructionContainer)AfterEachTargetContainer.Clone();
+            clone.AfterTargetCompleteContainer = (EventInstructionContainer)AfterTargetCompleteContainer.Clone();
+            clone.EnsureEventContainersInitialized();
+
+            foreach (var item in clone.Items)
+            {
+                item?.AttachNewParent(clone);
+            }
+
+            foreach (var trigger in clone.Triggers)
+            {
+                trigger?.AttachNewParent(clone);
+            }
+
+            foreach (var condition in clone.Conditions)
+            {
+                condition?.AttachNewParent(clone);
+            }
+        }
+
+        public override object Clone()
+        {
+            var clone = CreateCloneInstance();
+            CopyCloneStateTo(clone);
             return clone;
+        }
+
+        public override bool Validate()
+        {
+            var issues = new List<string>();
+
+            var triggersValid = ValidateEntities(GetTriggersSnapshot());
+            var conditionsValid = ValidateEntities(GetConditionsSnapshot());
+            var itemsValid = ValidateEntities(Items);
+
+            var beforeWaitValid = BeforeWaitContainer.Validate();
+            var afterWaitValid = AfterWaitContainer.Validate();
+            var beforeTargetValid = BeforeTargetContainer.Validate();
+            var afterEachExposureValid = AfterEachExposureContainer.Validate();
+            var afterTargetValid = AfterTargetContainer.Validate();
+            var afterEachTargetValid = AfterEachTargetContainer.Validate();
+            var afterTargetCompleteValid = AfterTargetCompleteContainer.Validate();
+
+            if (!triggersValid || !conditionsValid || !itemsValid)
+            {
+                issues.Add("One or more scheduler items, conditions, or triggers is not valid");
+            }
+
+            if (!beforeWaitValid
+                || !afterWaitValid
+                || !beforeTargetValid
+                || !afterEachExposureValid
+                || !afterTargetValid
+                || !afterEachTargetValid
+                || !afterTargetCompleteValid)
+            {
+                issues.Add("One or more AstroManager event containers is not valid");
+            }
+
+            Issues = issues;
+            return issues.Count == 0;
+        }
+
+        private static bool ValidateEntities<T>(IEnumerable<T> entities)
+        {
+            var valid = true;
+
+            foreach (var entity in entities)
+            {
+                if (entity is IValidatable validatable && !validatable.Validate())
+                {
+                    valid = false;
+                }
+            }
+
+            return valid;
         }
         
         /// <summary>
@@ -1197,6 +1470,8 @@ namespace AstroManager.NinaPlugin
                 var (effectiveRuntimePolicy, runtimePolicySource) = await GetEffectiveRuntimeStopSafetyPolicyWithRefreshAsync(effectiveConfig);
                 Logger.Debug($"AstroManager Scheduler: Safety policy source: {runtimePolicySource}");
 
+                await HandleTransitionIntoNextSlotAsync(slot, progress, token);
+
                 // Handle slot type
                 switch (slot.SlotType)
                 {
@@ -1304,6 +1579,8 @@ namespace AstroManager.NinaPlugin
                         StatusMessage = waitMessage;
                         progress.Report(new ApplicationStatus { Status = waitMessage });
 
+                        await ExecuteEventContainerAsync(BeforeWaitContainer, progress, token);
+
                         var waitDuration = TimeSpan.FromMinutes(waitMins);
                         if (effectiveRuntimePolicy != null && waitDuration > PeriodicSafetyCheckInterval)
                         {
@@ -1331,6 +1608,8 @@ namespace AstroManager.NinaPlugin
                         {
                             await Task.Delay(waitDuration, token);
                         }
+
+                        await ExecuteEventContainerAsync(AfterWaitContainer, progress, token);
 
                         break;
                         
@@ -1410,6 +1689,37 @@ namespace AstroManager.NinaPlugin
                 await HandleErrorAsync(ex, progress, token);
             }
         }
+
+        private async Task HandleTransitionIntoNextSlotAsync(
+            NextSlotDto nextSlot,
+            IProgress<ApplicationStatus> progress,
+            CancellationToken token)
+        {
+            if (!_currentTargetId.HasValue)
+            {
+                return;
+            }
+
+            var leavingCurrentTarget =
+                nextSlot.SlotType != SlotType.Exposure
+                || nextSlot.TargetId != _currentTargetId
+                || nextSlot.PanelId != _currentPanelId;
+
+            if (!leavingCurrentTarget)
+            {
+                return;
+            }
+
+            await ExecuteEventContainerAsync(AfterTargetContainer, progress, token);
+
+            if (nextSlot.SlotType != SlotType.Exposure)
+            {
+                ClearTarget();
+                _currentTargetId = null;
+                _currentPanelId = null;
+                _currentQueueItemId = null;
+            }
+        }
         
         /// <summary>
         /// Called when the sequence item is interrupted or finished.
@@ -1418,6 +1728,7 @@ namespace AstroManager.NinaPlugin
         public override void AfterParentChanged()
         {
             base.AfterParentChanged();
+            EnsureEventContainersInitialized();
             // Reset session state when moved/removed
             if (Parent == null && _sessionStarted)
             {
@@ -1893,6 +2204,7 @@ namespace AstroManager.NinaPlugin
             _currentTargetId = null;
             _currentPanelId = null;
             _currentFilter = null;
+            _completedTargetEventsRaised.Clear();
             SessionExposuresTaken = 0;
             _exposuresSinceLastDither = 0;
             // Reset slew tracking - new session should slew to first target
@@ -1944,6 +2256,7 @@ namespace AstroManager.NinaPlugin
             _currentTargetId = null;
             _currentPanelId = null;
             _currentFilter = null;
+            _completedTargetEventsRaised.Clear();
             Logger.Debug("AstroManager Scheduler: Cleared current target state for fresh slew on restart");
             
             base.SequenceBlockInitialize();
@@ -2011,6 +2324,10 @@ namespace AstroManager.NinaPlugin
             }
             CurrentTargetName = targetDisplayName;
             CurrentPositionAngle = slot.PositionAngle;
+
+            var isNewTargetContext = !_currentTargetId.HasValue
+                || _currentTargetId != slot.TargetId
+                || _currentPanelId != slot.PanelId;
             
             // IMPORTANT: Update current target IMMEDIATELY so error handling knows which target failed
             // This must happen BEFORE any operations that could throw errors
@@ -2056,24 +2373,6 @@ namespace AstroManager.NinaPlugin
                 
                 // Reset dither counter after slew (new target or re-center)
                 _exposuresSinceLastDither = 0;
-                
-                // Log target change for debugging
-                var isNewTarget = _currentTargetId != slot.TargetId;
-                if (isNewTarget)
-                {
-                    Logger.Info($"Target changed from {_currentTargetId} to {slot.TargetId}");
-                    
-                    // Execute AfterTargetContainer for the PREVIOUS target before moving on
-                    // This runs user-configured cleanup/notification instructions
-                    if (_currentTargetId != null && _currentTargetId != Guid.Empty)
-                    {
-                        await ExecuteEventContainerAsync(AfterTargetContainer, progress, token);
-                    }
-                    
-                    // Execute BeforeTargetContainer for new targets (like TargetScheduler does)
-                    // This runs user-configured instructions like autofocus after slew
-                    await ExecuteEventContainerAsync(BeforeTargetContainer, progress, token);
-                }
                 
                 // Inject coordinates into CenterAfterDrift triggers in parent containers
                 // This fixes the "No Target Set" warning by telling CenterAfterDrift where we're pointing
@@ -2122,6 +2421,11 @@ namespace AstroManager.NinaPlugin
             {
                 // Mono camera but no usable filter was provided - keep state aligned with wheel.
                 _currentFilter = GetCurrentNinaFilterName() ?? slot.NinaFilterName ?? slot.Filter;
+            }
+
+            if (isNewTargetContext)
+            {
+                await ExecuteEventContainerAsync(BeforeTargetContainer, progress, token);
             }
 
             // 3. START GUIDING if not already guiding and guider connected
@@ -2249,7 +2553,7 @@ namespace AstroManager.NinaPlugin
             await ExecuteEventContainerAsync(AfterEachExposureContainer, progress, token);
 
             // 6. REPORT COMPLETION to API
-            await ReportSlotCompletedAsync(slot, true);
+            var targetCompleted = await ReportSlotCompletedAsync(slot, true);
             
             // 7. FORCE STATUS UPDATE to immediately reflect new progress in Remote Control UI
             // Keep target info but clear imaging goal ID to indicate we're between exposures
@@ -2257,6 +2561,13 @@ namespace AstroManager.NinaPlugin
                 targetId: slot.TargetId, imagingGoalId: null, panelId: slot.PanelId,
                 panelName: slot.PanelName, exposureTimeSeconds: null);
             await _heartbeatService.ForceStatusUpdateAsync();
+
+            await ExecuteEventContainerAsync(AfterEachTargetContainer, progress, token);
+
+            if (targetCompleted)
+            {
+                await ExecuteEventContainerAsync(AfterTargetCompleteContainer, progress, token);
+            }
             
             // Note: _currentTargetId, _currentPanelId, etc. already set at slot START for error handling
         }
@@ -2488,11 +2799,12 @@ namespace AstroManager.NinaPlugin
         /// Report slot completion - increments goal progress immediately after shot
         /// Thumbnail upload happens separately via OnImageSaved, matching via ImagingGoalId
         /// </summary>
-        private async Task ReportSlotCompletedAsync(NextSlotDto slot, bool success)
+        private async Task<bool> ReportSlotCompletedAsync(NextSlotDto slot, bool success)
         {
             try
             {
                 Logger.Info($"[EXPOSURE-COMPLETE] {slot.TargetName}/{slot.Filter} - Success={success}, Goal={slot.ImagingGoalId}");
+                var targetCompleted = false;
                 
                 // Check if we're in offline mode - if so, queue capture for later sync
                 var isOffline = _offlineCalculator.ShouldUseOfflineMode();
@@ -2517,6 +2829,11 @@ namespace AstroManager.NinaPlugin
                     if (slot.TargetId.HasValue && slot.ImagingGoalId.HasValue)
                     {
                         _offlineCalculator.RecordOfflineExposure(slot.TargetId.Value, slot.ImagingGoalId.Value);
+                        targetCompleted = UpdateLocalTargetStoreProgressAndCheckCompletion(
+                            slot.TargetId.Value,
+                            slot.PanelId,
+                            slot.ImagingGoalId.Value,
+                            slot.CompletedExposures + 1);
                     }
                     
                     AddLogEntry($"[OFFLINE] Capture queued: {slot.TargetName}/{slot.Filter}", SchedulerLogLevel.Info);
@@ -2541,6 +2858,11 @@ namespace AstroManager.NinaPlugin
                         if (response?.Acknowledged == true)
                         {
                             Logger.Info($"[EXPOSURE-COMPLETE] Progress updated: {response.NewCompletedCount}/{response.TotalGoalCount} ({response.CompletionPercentage}%)");
+                            targetCompleted = UpdateLocalTargetStoreProgressAndCheckCompletion(
+                                slot.TargetId.Value,
+                                slot.PanelId,
+                                slot.ImagingGoalId.Value,
+                                response.NewCompletedCount);
                         }
                         else
                         {
@@ -2551,11 +2873,99 @@ namespace AstroManager.NinaPlugin
                     // Also try to sync any queued offline captures
                     _ = TrySyncOfflineCapturesAsync();
                 }
+
+                return targetCompleted;
             }
             catch (Exception ex)
             {
                 Logger.Warning($"AstroManager Scheduler: Failed to report exposure: {ex.Message}");
+                return false;
             }
+        }
+
+        private bool UpdateLocalTargetStoreProgressAndCheckCompletion(
+            Guid targetId,
+            Guid? panelId,
+            Guid imagingGoalId,
+            int completedExposures)
+        {
+            try
+            {
+                var target = _targetStore.GetTarget(targetId);
+                if (target == null)
+                {
+                    return false;
+                }
+
+                var updated = false;
+
+                if (panelId.HasValue)
+                {
+                    var panel = target.Panels.FirstOrDefault(p => p.Id == panelId.Value);
+                    var panelGoal = panel?.ImagingGoals.FirstOrDefault(g => g.Id == imagingGoalId);
+                    if (panelGoal != null)
+                    {
+                        panelGoal.CompletedExposures = completedExposures;
+                        updated = true;
+                    }
+
+                    if (panel != null)
+                    {
+                        panel.IsCompleted = panel.ImagingGoals
+                            .Where(g => g.IsEnabled)
+                            .All(g => g.IsCompleted);
+                        panel.CompletionPercentage = panel.ImagingGoals
+                            .Where(g => g.IsEnabled)
+                            .DefaultIfEmpty()
+                            .Average(g => g == null ? 100 : g.CompletionPercentage);
+                    }
+                }
+                else
+                {
+                    var goal = target.ImagingGoals.FirstOrDefault(g => g.Id == imagingGoalId);
+                    if (goal != null)
+                    {
+                        goal.CompletedExposures = completedExposures;
+                        updated = true;
+                    }
+                }
+
+                if (!updated)
+                {
+                    return false;
+                }
+
+                _targetStore.UpdateTarget(target);
+
+                var targetCompleted = IsTargetCompleted(target);
+                if (targetCompleted && !_completedTargetEventsRaised.Contains(targetId))
+                {
+                    _completedTargetEventsRaised.Add(targetId);
+                    AddLogEntry($"Target complete: {target.Name}", SchedulerLogLevel.Success);
+                    return true;
+                }
+
+                return false;
+            }
+            catch (Exception ex)
+            {
+                Logger.Warning($"AstroManager Scheduler: Failed to update local target completion state: {ex.Message}");
+                return false;
+            }
+        }
+
+        private static bool IsTargetCompleted(ScheduledTargetDto target)
+        {
+            if (target.IsMosaic && target.HasPanels)
+            {
+                return target.Panels
+                    .Where(p => p.IsEnabled)
+                    .All(p => p.ImagingGoals.Where(g => g.IsEnabled).All(g => g.IsCompleted));
+            }
+
+            return target.ImagingGoals
+                .Where(g => g.IsEnabled)
+                .All(g => g.IsCompleted);
         }
 
         /// <summary>
@@ -2711,6 +3121,7 @@ namespace AstroManager.NinaPlugin
                 
                 // Reset parent to ensure items can find the DSO Target
                 container.ResetParent(this);
+                InjectCoordinatesIntoContainer(container);
                 
                 await container.Execute(progress, token);
                 
@@ -2729,6 +3140,43 @@ namespace AstroManager.NinaPlugin
                 Logger.Warning($"Error executing event container '{container.Name}': {ex.Message}");
                 AddLogEntry($"{container.Name} error: {ex.Message}", SchedulerLogLevel.Warning);
                 // Don't fail the sequence due to event container errors
+            }
+        }
+
+        private void InjectCoordinatesIntoContainer(ISequenceContainer container)
+        {
+            if (Target?.InputCoordinates == null || container?.Items == null || container.Items.Count == 0)
+            {
+                return;
+            }
+
+            foreach (var item in container.Items)
+            {
+                if (item is SlewScopeToRaDec slewScopeToRaDec)
+                {
+                    slewScopeToRaDec.Coordinates = Target.InputCoordinates;
+                    slewScopeToRaDec.Inherited = true;
+                    slewScopeToRaDec.SequenceBlockInitialize();
+                }
+
+                if (item is Center center)
+                {
+                    center.Coordinates = Target.InputCoordinates;
+                    center.Inherited = true;
+                    center.SequenceBlockInitialize();
+                }
+
+                if (item is CenterAndRotate centerAndRotate)
+                {
+                    centerAndRotate.Coordinates = Target.InputCoordinates;
+                    centerAndRotate.Inherited = true;
+                    centerAndRotate.SequenceBlockInitialize();
+                }
+
+                if (item is ISequenceContainer subContainer)
+                {
+                    InjectCoordinatesIntoContainer(subContainer);
+                }
             }
         }
 
