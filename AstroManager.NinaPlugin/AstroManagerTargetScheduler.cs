@@ -588,6 +588,7 @@ namespace AstroManager.NinaPlugin
         
         // IDeepSkyObjectContainer implementation - Target property for NINA trigger support
         private InputTarget _target;
+        private ExposureContainer? _exposureContainer;
         public InputTarget Target
         {
             get => _target;
@@ -2207,6 +2208,7 @@ namespace AstroManager.NinaPlugin
             _completedTargetEventsRaised.Clear();
             SessionExposuresTaken = 0;
             _exposuresSinceLastDither = 0;
+            _exposureContainer?.ResetExposureCounter();
             // Reset slew tracking - new session should slew to first target
             _lastSuccessfulSlewTargetId = null;
             _lastSuccessfulSlewPanelId = null;
@@ -2289,6 +2291,7 @@ namespace AstroManager.NinaPlugin
             Logger.Debug("AstroManager Scheduler: SequenceBlockTeardown");
             ClearTarget();
             SharedSchedulerState.Instance.Clear(); // Clear scheduler state so manual captures don't associate with old target
+            _exposureContainer = null;
             base.SequenceBlockTeardown();
         }
         
@@ -2302,6 +2305,7 @@ namespace AstroManager.NinaPlugin
                 _sessionNightEndTwilightLocal = null;
                 _heartbeatService.ClearCurrentState();
                 SharedSchedulerState.Instance.Clear(); // Clear scheduler state so manual captures don't associate with old target
+                _exposureContainer?.ResetExposureCounter();
                 StatusMessage = $"Complete ({SessionExposuresTaken} exposures)";
             }
         }
@@ -2485,19 +2489,19 @@ namespace AstroManager.NinaPlugin
             
             // Create ExposureContainer (like TargetScheduler's PlanContainer)
             // This properly integrates with NINA's trigger system via base.Execute()
-            var exposureContainer = new ExposureContainer(
+            _exposureContainer ??= new ExposureContainer(
                 this,
                 _profileService,
                 _cameraMediator,
                 _imagingMediator,
                 _imageSaveMediator,
                 _imageHistoryVM);
-            
-            exposureContainer.AddExposure(slot);
+
+            _exposureContainer.ConfigureExposure(slot);
             
             // Execute via container - this calls base.Execute() which handles triggers properly
             AddLogEntry($"📷 Exposure started: {slot.Filter} {slot.ExposureTimeSeconds}s", SchedulerLogLevel.Info);
-            var exposureTask = exposureContainer.Execute(progress, token);
+            var exposureTask = _exposureContainer.Execute(progress, token);
 
             if (runtimePolicy != null
                 && slot.ExposureTimeSeconds > ExposureSafetyCheckInterval.TotalSeconds

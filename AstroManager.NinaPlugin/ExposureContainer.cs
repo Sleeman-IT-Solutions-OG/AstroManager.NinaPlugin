@@ -11,7 +11,6 @@ using NINA.Sequencer.SequenceItem.Imaging;
 using NINA.WPF.Base.Interfaces.Mediator;
 using NINA.WPF.Base.Interfaces.ViewModel;
 using Shared.Model.DTO.Client;
-using System;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -30,6 +29,7 @@ namespace AstroManager.NinaPlugin
         private readonly IImagingMediator _imagingMediator;
         private readonly IImageSaveMediator _imageSaveMediator;
         private readonly IImageHistoryVM _imageHistoryVM;
+        private readonly TakeExposure _exposureItem;
         
         // IDeepSkyObjectContainer implementation - delegate to parent
         public InputTarget Target 
@@ -66,30 +66,38 @@ namespace AstroManager.NinaPlugin
             {
                 trigger.AttachNewParent(this);
             }
-        }
-        
-        /// <summary>
-        /// Add the exposure item to this container
-        /// </summary>
-        public void AddExposure(NextSlotDto slot)
-        {
-            var exposureItem = new TakeExposure(
+
+            _exposureItem = new TakeExposure(
                 _profileService,
                 _cameraMediator,
                 _imagingMediator,
                 _imageSaveMediator,
                 _imageHistoryVM);
-            
-            exposureItem.ExposureTime = slot.ExposureTimeSeconds;
-            exposureItem.ExposureCount = 1;
-            exposureItem.ImageType = "LIGHT";
-            exposureItem.Gain = slot.Gain >= 0 ? slot.Gain : -1;
-            exposureItem.Offset = slot.Offset >= 0 ? slot.Offset : -1;
-            
-            // Add to Items collection - base.Execute() will execute it
-            Add(exposureItem);
-            
-            Logger.Info($"ExposureContainer: Added TakeExposure - {slot.Filter} {slot.ExposureTimeSeconds}s");
+            _exposureItem.ExposureCount = 1;
+
+            Add(_exposureItem);
+        }
+        
+        /// <summary>
+        /// Configure the persistent exposure item for the next slot.
+        /// NINA keeps the filename exposure counter on the TakeExposure instance,
+        /// so recreating that item every shot resets $$EXPOSURENUMBER$$ back to 0001.
+        /// We intentionally keep one TakeExposure item alive for the full scheduler run,
+        /// which matches Target Scheduler's session-wide frame numbering behavior.
+        /// </summary>
+        public void ConfigureExposure(NextSlotDto slot)
+        {
+            if (_exposureItem.ExposureCount < 1)
+            {
+                _exposureItem.ExposureCount = 1;
+            }
+
+            _exposureItem.ExposureTime = slot.ExposureTimeSeconds;
+            _exposureItem.ImageType = "LIGHT";
+            _exposureItem.Gain = slot.Gain >= 0 ? slot.Gain : -1;
+            _exposureItem.Offset = slot.Offset >= 0 ? slot.Offset : -1;
+
+            Logger.Info($"ExposureContainer: Configured TakeExposure - {slot.Filter} {slot.ExposureTimeSeconds}s (next #{_exposureItem.ExposureCount})");
         }
         
         public override async Task Execute(IProgress<ApplicationStatus> progress, CancellationToken token)
@@ -104,22 +112,7 @@ namespace AstroManager.NinaPlugin
                 
                 Logger.Info("ExposureContainer: Execution completed");
             }
-            finally
-            {
-                // Clean up: detach items and clear
-                foreach (var item in Items)
-                {
-                    item.AttachNewParent(null);
-                }
-                Items.Clear();
-                
-                // Don't clear triggers - they belong to parent
-                foreach (var trigger in Triggers)
-                {
-                    trigger.AttachNewParent(_parentContainer);
-                }
-                Triggers.Clear();
-            }
+            finally { }
         }
         
         public override object Clone()
@@ -131,6 +124,12 @@ namespace AstroManager.NinaPlugin
                 _imagingMediator,
                 _imageSaveMediator,
                 _imageHistoryVM);
+        }
+
+        public void ResetExposureCounter()
+        {
+            _exposureItem.ExposureCount = 1;
+            Logger.Info("ExposureContainer: Reset exposure counter for new scheduler session");
         }
     }
 }
