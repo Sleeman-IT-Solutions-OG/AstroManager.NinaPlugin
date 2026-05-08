@@ -209,6 +209,7 @@ namespace AstroManager.NinaPlugin
         private int _guiderSettlingSampleCount;
         private bool? _stableGuiderSettlingState;
         private readonly HashSet<Guid> _completedTargetEventsRaised = new();
+        private bool _missingLoopWarningLogged;
         
         #region Custom Event Containers
         
@@ -1233,6 +1234,8 @@ namespace AstroManager.NinaPlugin
         /// </summary>
         public override async Task Execute(IProgress<ApplicationStatus> progress, CancellationToken token)
         {
+            WarnIfSchedulerIsNotLooped();
+
             // Check license key FIRST - prevent any scheduling without valid license
             if (!_apiClient.HasLicenseKey)
             {
@@ -2206,6 +2209,7 @@ namespace AstroManager.NinaPlugin
             _currentPanelId = null;
             _currentFilter = null;
             _completedTargetEventsRaised.Clear();
+            _missingLoopWarningLogged = false;
             SessionExposuresTaken = 0;
             _exposuresSinceLastDither = 0;
             _exposureContainer?.ResetExposureCounter();
@@ -2259,6 +2263,7 @@ namespace AstroManager.NinaPlugin
             _currentPanelId = null;
             _currentFilter = null;
             _completedTargetEventsRaised.Clear();
+            _missingLoopWarningLogged = false;
             Logger.Debug("AstroManager Scheduler: Cleared current target state for fresh slew on restart");
             
             base.SequenceBlockInitialize();
@@ -2306,8 +2311,34 @@ namespace AstroManager.NinaPlugin
                 _heartbeatService.ClearCurrentState();
                 SharedSchedulerState.Instance.Clear(); // Clear scheduler state so manual captures don't associate with old target
                 _exposureContainer?.ResetExposureCounter();
+                _missingLoopWarningLogged = false;
                 StatusMessage = $"Complete ({SessionExposuresTaken} exposures)";
             }
+        }
+
+        private void WarnIfSchedulerIsNotLooped()
+        {
+            if (_missingLoopWarningLogged)
+            {
+                return;
+            }
+
+            ISequenceItem? current = this;
+            while (current != null)
+            {
+                if (current is SequenceContainer container
+                    && container.GetConditionsSnapshot().OfType<AstroManagerLoopCondition>().Any())
+                {
+                    return;
+                }
+
+                current = current.Parent as ISequenceItem;
+            }
+
+            _missingLoopWarningLogged = true;
+            const string warningMessage = "Scheduler container is not inside a Loop While with AstroManager Loop Condition. N.I.N.A. will continue into End instructions after this slot.";
+            Logger.Warning($"AstroManager Scheduler: {warningMessage}");
+            AddLogEntry(warningMessage, SchedulerLogLevel.Warning);
         }
 
         /// <summary>

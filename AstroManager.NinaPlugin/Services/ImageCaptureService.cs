@@ -582,58 +582,45 @@ namespace AstroManager.NinaPlugin.Services
             }
             
             if (newCards.Count == 0) return;
-            
+
             int headerEnd = ((endPosition / BLOCK_SIZE) + 1) * BLOCK_SIZE;
-            int newCardsSize = newCards.Count * CARD_SIZE;
-            
-            int spaceBeforeEnd = 0;
-            for (int i = endPosition - CARD_SIZE; i >= 0 && i >= endPosition - (BLOCK_SIZE - CARD_SIZE); i -= CARD_SIZE)
+            int dataLength = fileBytes.Length - headerEnd;
+
+            var headerPrefix = new byte[endPosition];
+            Buffer.BlockCopy(fileBytes, 0, headerPrefix, 0, headerPrefix.Length);
+
+            var serializedCards = new List<byte>(headerPrefix.Length + ((newCards.Count + 1) * CARD_SIZE));
+            serializedCards.AddRange(headerPrefix);
+
+            foreach (var card in newCards)
             {
-                bool isEmpty = true;
-                for (int j = 0; j < CARD_SIZE; j++)
-                {
-                    if (fileBytes[i + j] != ' ' && fileBytes[i + j] != 0)
-                    {
-                        isEmpty = false;
-                        break;
-                    }
-                }
-                if (!isEmpty) break;
-                spaceBeforeEnd += CARD_SIZE;
+                serializedCards.AddRange(System.Text.Encoding.ASCII.GetBytes(card));
             }
-            
-            int spaceAfterEnd = headerEnd - endPosition - CARD_SIZE;
-            int totalSpace = spaceBeforeEnd + spaceAfterEnd;
-            
-            if (totalSpace >= newCardsSize)
+
+            serializedCards.AddRange(System.Text.Encoding.ASCII.GetBytes("END".PadRight(CARD_SIZE)));
+
+            var newHeaderLength = ((serializedCards.Count + BLOCK_SIZE - 1) / BLOCK_SIZE) * BLOCK_SIZE;
+            var rebuiltFile = new byte[newHeaderLength + dataLength];
+
+            for (int i = 0; i < rebuiltFile.Length; i++)
             {
-                using var stream = new FileStream(filePath, FileMode.Open, FileAccess.Write, FileShare.None);
-                stream.Position = endPosition;
-                
-                foreach (var card in newCards)
-                {
-                    var cardBytes = System.Text.Encoding.ASCII.GetBytes(card);
-                    stream.Write(cardBytes, 0, CARD_SIZE);
-                }
-                
-                var endCard = "END".PadRight(CARD_SIZE);
-                var endBytes = System.Text.Encoding.ASCII.GetBytes(endCard);
-                stream.Write(endBytes, 0, CARD_SIZE);
-                
-                int remaining = headerEnd - (int)stream.Position;
-                if (remaining > 0)
-                {
-                    var blanks = new byte[remaining];
-                    for (int i = 0; i < remaining; i++) blanks[i] = (byte)' ';
-                    stream.Write(blanks, 0, remaining);
-                }
-                
-                Logger.Info($"AstroManager: Injected FITS headers - AM_GOALID={goalId}, AM_UID={captureId} into {Path.GetFileName(filePath)}");
+                rebuiltFile[i] = (byte)' ';
             }
-            else
+
+            Buffer.BlockCopy(serializedCards.ToArray(), 0, rebuiltFile, 0, serializedCards.Count);
+
+            if (dataLength > 0)
             {
-                Logger.Warning($"AstroManager: Not enough space in FITS header to inject custom keywords: {filePath}");
+                Buffer.BlockCopy(fileBytes, headerEnd, rebuiltFile, newHeaderLength, dataLength);
             }
+
+            using var stream = new FileStream(filePath, FileMode.Create, FileAccess.Write, FileShare.None);
+            stream.Write(rebuiltFile, 0, rebuiltFile.Length);
+
+            var headerExpanded = newHeaderLength != headerEnd;
+            Logger.Info(
+                $"AstroManager: Injected FITS headers - AM_GOALID={goalId}, AM_UID={captureId} into {Path.GetFileName(filePath)}" +
+                (headerExpanded ? " (expanded header block)" : string.Empty));
         }
 
         private async Task<(string? thumbnail, string? microThumbnail)> GenerateThumbnailsAsync(ImageSavedEventArgs e)

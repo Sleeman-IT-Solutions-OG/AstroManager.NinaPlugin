@@ -96,6 +96,8 @@ namespace AstroManager.NinaPlugin
             _exposureItem.ImageType = "LIGHT";
             _exposureItem.Gain = slot.Gain >= 0 ? slot.Gain : -1;
             _exposureItem.Offset = slot.Offset >= 0 ? slot.Offset : -1;
+            _exposureItem.ResetProgress();
+            ResetProgress();
 
             Logger.Info($"ExposureContainer: Configured TakeExposure - {slot.Filter} {slot.ExposureTimeSeconds}s (next #{_exposureItem.ExposureCount})");
         }
