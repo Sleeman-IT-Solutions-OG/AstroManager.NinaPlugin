@@ -1792,6 +1792,20 @@ namespace AstroManager.NinaPlugin
                 {
                     _sessionNightEndTwilightLocal = CalculateSessionNightEndTwilight(now);
                 }
+                else if (now.Date > _sessionNightEndTwilightLocal.Value.Date)
+                {
+                    var previousBoundary = _sessionNightEndTwilightLocal.Value;
+                    var refreshedBoundary = CalculateSessionNightEndTwilight(now);
+                    if (refreshedBoundary.HasValue)
+                    {
+                        _sessionNightEndTwilightLocal = refreshedBoundary;
+                        Logger.Info($"[TWILIGHT-CHECK] Refreshed stale session twilight after date rollover: {previousBoundary:yyyy-MM-dd HH:mm} -> {refreshedBoundary.Value:yyyy-MM-dd HH:mm}");
+                    }
+                    else
+                    {
+                        Logger.Warning($"[TWILIGHT-CHECK] Session twilight {previousBoundary:yyyy-MM-dd HH:mm} appears stale after date rollover, but refresh failed");
+                    }
+                }
 
                 if (!_sessionNightEndTwilightLocal.HasValue)
                 {
@@ -1939,7 +1953,8 @@ namespace AstroManager.NinaPlugin
         {
             var calculator = new NighttimeCalculator(_profileService);
 
-            DateTime? nextDawn = null;
+            DateTime? selectedDusk = null;
+            DateTime? selectedDawn = null;
             var candidateDates = new[]
             {
                 sessionStartLocal.Date.AddDays(-1),
@@ -1952,25 +1967,74 @@ namespace AstroManager.NinaPlugin
             {
                 var referenceDate = NighttimeCalculator.GetReferenceDate(candidateDate);
                 var nighttimeData = calculator.Calculate(referenceDate);
+                var dusk = nighttimeData?.NauticalTwilightRiseAndSet?.Set;
                 var dawn = nighttimeData?.NauticalTwilightRiseAndSet?.Rise;
 
-                if (!dawn.HasValue || dawn.Value <= sessionStartLocal)
+                if (!dusk.HasValue || !dawn.HasValue)
                 {
                     continue;
                 }
 
-                if (!nextDawn.HasValue || dawn.Value < nextDawn.Value)
+                // NINA can return the dawn with the same calendar date as the paired dusk.
+                // Normalize to the actual night window so "evening dusk -> next morning dawn"
+                // always compares on the correct side of midnight.
+                var normalizedDusk = dusk.Value;
+                var normalizedDawn = dawn.Value;
+                if (normalizedDawn <= normalizedDusk)
                 {
-                    nextDawn = dawn.Value;
+                    normalizedDawn = normalizedDawn.AddDays(1);
+                }
+
+                var isUpcomingNight = sessionStartLocal <= normalizedDusk;
+                var isCurrentNight = sessionStartLocal > normalizedDusk && sessionStartLocal < normalizedDawn;
+                if (!isUpcomingNight && !isCurrentNight)
+                {
+                    continue;
+                }
+
+                if (!selectedDawn.HasValue || normalizedDawn < selectedDawn.Value)
+                {
+                    selectedDusk = normalizedDusk;
+                    selectedDawn = normalizedDawn;
                 }
             }
 
-            if (nextDawn.HasValue)
+            // Fallback: if we could not match an active/upcoming dusk+dawn pair, still use
+            // the earliest dawn after session start rather than leaving the safety check empty.
+            if (!selectedDawn.HasValue)
             {
-                Logger.Info($"[TWILIGHT-CHECK] Session start {sessionStartLocal:yyyy-MM-dd HH:mm}, boundary twilight {nextDawn.Value:yyyy-MM-dd HH:mm}");
+                foreach (var candidateDate in candidateDates)
+                {
+                    var referenceDate = NighttimeCalculator.GetReferenceDate(candidateDate);
+                    var nighttimeData = calculator.Calculate(referenceDate);
+                    var dawn = nighttimeData?.NauticalTwilightRiseAndSet?.Rise;
+
+                    if (!dawn.HasValue)
+                    {
+                        continue;
+                    }
+
+                    var normalizedDawn = dawn.Value <= sessionStartLocal ? dawn.Value.AddDays(1) : dawn.Value;
+                    if (!selectedDawn.HasValue || normalizedDawn < selectedDawn.Value)
+                    {
+                        selectedDawn = normalizedDawn;
+                    }
+                }
             }
 
-            return nextDawn;
+            if (selectedDawn.HasValue)
+            {
+                if (selectedDusk.HasValue)
+                {
+                    Logger.Info($"[TWILIGHT-CHECK] Session start {sessionStartLocal:yyyy-MM-dd HH:mm}, selected dusk {selectedDusk.Value:yyyy-MM-dd HH:mm}, boundary twilight {selectedDawn.Value:yyyy-MM-dd HH:mm}");
+                }
+                else
+                {
+                    Logger.Info($"[TWILIGHT-CHECK] Session start {sessionStartLocal:yyyy-MM-dd HH:mm}, boundary twilight {selectedDawn.Value:yyyy-MM-dd HH:mm} (fallback)");
+                }
+            }
+
+            return selectedDawn;
         }
 
         private async Task TryRefreshObservatoryCacheAsync()
